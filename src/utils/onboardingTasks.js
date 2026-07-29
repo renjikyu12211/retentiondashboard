@@ -7,7 +7,7 @@
  * onboarding process — edit freely to match your own program.
  */
 
-const BUSINESS_NAME = import.meta.env.VITE_BUSINESS_NAME || 'Your Gym';
+const BUSINESS_NAME = import.meta.env.VITE_BUSINESS_NAME || 'Feel Good Pilates';
 
 export const ONBOARDING_TASKS = [
   // ─── Week 1 ──────────────────────────────────────────────────────────────
