@@ -54,19 +54,19 @@ export default function SuspensionsList({ data, loading, error }) {
   }, [clients]);
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 flex flex-col">
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-800">
+      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <PauseCircle className="h-4 w-4 text-orange-400" />
-          <h2 className="font-semibold text-white">On Suspension</h2>
+          <h2 className="font-semibold text-gray-900">On Suspension</h2>
           {!loading && (
             <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-medium text-orange-400 border border-orange-500/20">
               {clients.length}
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500">Hold or non-active status</p>
+        <p className="text-xs text-gray-600">Hold or non-active status</p>
       </div>
 
       {/* Body */}
@@ -74,7 +74,7 @@ export default function SuspensionsList({ data, loading, error }) {
         {loading && (
           <div className="space-y-2 p-5">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-800" />
+              <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-200" />
             ))}
           </div>
         )}
@@ -86,7 +86,7 @@ export default function SuspensionsList({ data, loading, error }) {
         {!loading && !error && clients.length === 0 && (
           <div className="py-10 text-center">
             <CheckCircle className="h-7 w-7 text-emerald-500/40 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">No suspended clients</p>
+            <p className="text-sm text-gray-600">No suspended clients</p>
           </div>
         )}
 
@@ -99,11 +99,11 @@ export default function SuspensionsList({ data, loading, error }) {
           return (
             <div
               key={client.id}
-              className="px-5 py-3 border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 transition-colors"
+              className="px-5 py-3 border-b border-gray-200/80 last:border-0 hover:bg-gray-50 transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-200 truncate">{client.name || 'Unknown'}</p>
+                  <p className="text-sm font-medium text-gray-900 truncate">{client.name || 'Unknown'}</p>
 
                   {/* Resume date — prominent orange line */}
                   {lbl ? (
@@ -112,7 +112,7 @@ export default function SuspensionsList({ data, loading, error }) {
                       {lbl}
                     </p>
                   ) : (
-                    <p className="mt-1 text-xs text-gray-700">No end date set</p>
+                    <p className="mt-1 text-xs text-gray-600">No end date set</p>
                   )}
 
                   {/* Reason + start date secondary row */}

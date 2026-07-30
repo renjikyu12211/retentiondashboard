@@ -83,12 +83,12 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
   const toggleExpand   = (id) => setExpandedId((prev) => (prev === id ? null : id));
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 flex flex-col">
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-800">
+      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <TrendingDown className="h-4 w-4 text-red-400" />
-          <h2 className="font-semibold text-white">Red's List</h2>
+          <h2 className="font-semibold text-gray-900">Red's List</h2>
           {!loading && (
             <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400 border border-red-500/20">
               {clients.length}
@@ -96,7 +96,7 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-gray-700 overflow-hidden text-xs">
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
             {[
               { key: '7days',        label: 'Last 7 days' },
               { key: 'calendarWeek', label: 'This week'   },
@@ -106,8 +106,8 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
                 onClick={() => changePeriod(key)}
                 className={`px-3 py-1.5 transition-colors ${
                   period === key
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                    ? 'bg-gray-100 text-gray-900'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 {label}
@@ -118,7 +118,7 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
       </div>
 
       {/* Search */}
-      <div className="px-5 py-3 border-b border-gray-800">
+      <div className="px-5 py-3 border-b border-gray-200">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500" />
           <input
@@ -126,7 +126,7 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, email or phone…"
-            className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-8 pr-3 py-1.5 text-sm text-gray-100 placeholder-gray-600 focus:border-red-500 focus:outline-none"
+            className="w-full rounded-lg border border-gray-300 bg-white pl-8 pr-3 py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:border-red-500 focus:outline-none"
           />
         </div>
       </div>
@@ -136,7 +136,7 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
         {loading && (
           <div className="space-y-2 p-5">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-800" />
+              <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-200" />
             ))}
           </div>
         )}
@@ -148,7 +148,7 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
         {!loading && !error && filtered.length === 0 && (
           <div className="py-12 text-center">
             <CheckCircle className="h-8 w-8 text-emerald-500/40 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-600">
               {search ? 'No matches found' : "Red's list is clear"}
             </p>
           </div>
@@ -169,15 +169,15 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
             : null;
 
           return (
-            <div key={client.id} className="border-b border-gray-800/60 last:border-0">
+            <div key={client.id} className="border-b border-gray-200/80 last:border-0">
               {/* Main row — click anywhere to expand */}
               <div
-                className={`flex items-center justify-between px-5 py-3 hover:bg-gray-800/40 transition-colors cursor-pointer select-none ${wasContacted ? 'opacity-60' : ''}`}
+                className={`flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors cursor-pointer select-none ${wasContacted ? 'opacity-60' : ''}`}
                 onClick={() => toggleExpand(client.id)}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-medium text-gray-200 truncate">{client.name || 'Unknown'}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{client.name || 'Unknown'}</p>
                     <TrendBadge trend={client.trend} />
                     {wasContacted && (
                       <span className="shrink-0 flex items-center gap-1 text-xs text-emerald-500">
@@ -186,7 +186,7 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 truncate mt-0.5">
+                  <p className="text-xs text-gray-600 truncate mt-0.5">
                     {client.email || client.phone || 'No contact details'}
                     {client.service && <span className="ml-2 text-gray-600">{client.service}</span>}
                     {lastSeen      && <span className="ml-2 text-gray-600">{lastSeen}</span>}
@@ -198,13 +198,13 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
                     onClick={(e) => { e.stopPropagation(); setSelected(client); }}
                     className={`rounded-lg border px-3 py-1 text-xs font-medium transition-colors ${
                       wasContacted
-                        ? 'border-gray-700 bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+                        ? 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200'
                         : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'
                     }`}
                   >
                     {wasContacted ? 'View log' : 'Contact'}
                   </button>
-                  <ChevronDown className={`h-3.5 w-3.5 text-gray-600 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-3.5 w-3.5 text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                 </div>
               </div>
 
@@ -216,7 +216,7 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
       </div>
 
       {!loading && clients.length > 0 && (
-        <div className="px-5 py-3 border-t border-gray-800">
+        <div className="px-5 py-3 border-t border-gray-200">
           <p className="text-xs text-gray-600">
             Showing {filtered.length} of {clients.length} · {contactedCount} contacted in last 7 days
           </p>

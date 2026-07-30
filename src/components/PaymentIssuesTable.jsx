@@ -26,14 +26,14 @@ export default function PaymentIssuesTable({ data, loading, error }) {
   const resolvedFailures = failed.filter(p =>  resolved[p.key]);
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900">
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-800">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-red-400" />
-          <h2 className="font-semibold text-white">Payment Issues</h2>
+          <h2 className="font-semibold text-gray-900">Payment Issues</h2>
         </div>
-        <div className="flex items-center gap-4 text-xs text-gray-500">
+        <div className="flex items-center gap-4 text-xs text-gray-600">
           {summary.failedCount > 0 && (
             <span className="text-red-400 font-medium">
               {activeFailures.length} failed · {fmtAUD(activeFailures.reduce((s, p) => s + p.amount, 0))}
@@ -58,8 +58,8 @@ export default function PaymentIssuesTable({ data, loading, error }) {
             onClick={() => setTab(key)}
             className={`flex items-center gap-2 px-5 py-3 text-sm border-b-2 transition-colors ${
               tab === key
-                ? 'border-emerald-500 text-emerald-400 bg-gray-800/40'
-                : 'border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-800/20'
+                ? 'border-emerald-500 text-emerald-400 bg-gray-100'
+                : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-100'
             }`}
           >
             <Icon className="h-3.5 w-3.5" />
@@ -95,12 +95,12 @@ export default function PaymentIssuesTable({ data, loading, error }) {
             {activeFailures.length === 0 && resolvedFailures.length === 0 ? (
               <div className="py-12 text-center">
                 <CreditCard className="h-8 w-8 text-gray-700 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No failed payments in the last 30 days</p>
+                <p className="text-sm text-gray-600">No failed payments in the last 30 days</p>
               </div>
             ) : activeFailures.length === 0 ? (
               <div className="py-8 text-center">
                 <CheckCircle className="h-7 w-7 text-emerald-500/40 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">All failures resolved</p>
+                <p className="text-sm text-gray-600">All failures resolved</p>
               </div>
             ) : (
               <table className="w-full text-sm">
@@ -123,13 +123,13 @@ export default function PaymentIssuesTable({ data, loading, error }) {
                       <td className="px-5 py-3 font-medium text-gray-200 whitespace-nowrap">
                         {p.clientName}
                       </td>
-                      <td className="px-5 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">
+                      <td className="px-5 py-3 text-gray-600 font-mono text-xs whitespace-nowrap">
                         {p.card || '–'}
                       </td>
                       <td className="px-5 py-3 text-right font-mono font-medium text-red-400 whitespace-nowrap">
                         {fmtAUD(p.amount)}
                       </td>
-                      <td className="px-5 py-3 text-gray-500 whitespace-nowrap">{p.date}</td>
+                      <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{p.date}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1.5">
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[p.status] || 'bg-gray-700/40 text-gray-400'}`}>
@@ -171,7 +171,7 @@ export default function PaymentIssuesTable({ data, loading, error }) {
               <div className="border-t border-gray-800">
                 <button
                   onClick={() => setShowResolved(v => !v)}
-                  className="flex w-full items-center justify-between px-5 py-3 text-xs text-gray-500 hover:text-gray-400 transition-colors"
+                  className="flex w-full items-center justify-between px-5 py-3 text-xs text-gray-600 hover:text-gray-800 transition-colors"
                 >
                   <span>{resolvedFailures.length} resolved</span>
                   {showResolved ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}

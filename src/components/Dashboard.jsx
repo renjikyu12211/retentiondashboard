@@ -13,7 +13,6 @@ import DeclinedList       from './DeclinedList.jsx';
 import OnboardingTab          from './OnboardingTab.jsx';
 import PersonalTrainingTab    from './PersonalTrainingTab.jsx';
 import CelebrationsPanel   from './CelebrationsPanel.jsx';
-import { useOnboardingRollover } from '../utils/useOnboardingRollover.js';
 
 const TABS = [
   { key: 'operations',        label: 'Operations',        Icon: Activity  },
@@ -22,14 +21,15 @@ const TABS = [
   { key: 'personalTraining',  label: 'Personal Training', Icon: Dumbbell  },
 ];
 
-// Short-program products: removed from pipeline on no-rollover
 const SHORT_PRODUCTS = new Set(['3-Session', '14-Day']);
 
 export default function Dashboard({ data, loading, errors, lastRefresh, onRefresh, contactLog }) {
   const [tab, setTab] = useState('operations');
   const anyLoading    = Object.values(loading).some(Boolean);
 
-  const { decisions, getDecision, setDecision } = useOnboardingRollover();
+  const decisions = {};
+  const getDecision = () => null;
+  const setDecision = async () => {};
 
   // All onboarding clients (from each week column)
   const allOnboardingClients = useMemo(() => [
@@ -59,24 +59,24 @@ export default function Dashboard({ data, loading, errors, lastRefresh, onRefres
   }, [data.onboarding, decisions]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-[#F4F5F6] text-gray-900">
       {/* ── Header ── */}
-      <header className="sticky top-0 z-30 border-b border-gray-800 bg-gray-900/90 backdrop-blur px-6 py-4">
+      <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/90 backdrop-blur px-6 py-4">
         <div className="mx-auto max-w-7xl flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-white">Operations Dashboard</h1>
-            <p className="text-xs text-gray-500 mt-0.5">{import.meta.env.VITE_BUSINESS_NAME || 'Your Gym'}</p>
+            <h1 className="text-lg font-semibold tracking-tight text-gray-900">Operations Dashboard</h1>
+            <p className="text-xs text-gray-600 mt-0.5">{import.meta.env.VITE_BUSINESS_NAME || 'Feel Good Pilates'}</p>
           </div>
           <div className="flex items-center gap-4">
             {lastRefresh && (
-              <span className="hidden sm:block text-xs text-gray-500">
+              <span className="hidden sm:block text-xs text-gray-600">
                 Data from {isToday(lastRefresh) ? format(lastRefresh, 'h:mm a') : format(lastRefresh, 'EEE d MMM, h:mm a')}
               </span>
             )}
             <button
               onClick={onRefresh}
               disabled={anyLoading}
-              className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 rounded-lg bg-[#475AFF] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#3547e6] disabled:opacity-50 transition-colors"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${anyLoading ? 'animate-spin' : ''}`} />
               Refresh
@@ -95,8 +95,8 @@ export default function Dashboard({ data, loading, errors, lastRefresh, onRefres
                 onClick={() => setTab(key)}
                 className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   tab === key
-                    ? 'border-emerald-500 text-emerald-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-700'
+                    ? 'border-[#475AFF] text-[#475AFF]'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <Icon className="h-4 w-4" />

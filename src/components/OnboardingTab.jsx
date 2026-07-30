@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { Users2 } from 'lucide-react';
 import OnboardingBoard from './OnboardingBoard.jsx';
 import OnboardingReds  from './OnboardingReds.jsx';
-import { useOnboardingTasks } from '../utils/useOnboardingTasks.js';
 
 // Short-program products get removed from the board if no-rollover is selected
 const SHORT_PRODUCTS = new Set(['3-Session', '14-Day']);
@@ -25,7 +24,8 @@ export default function OnboardingTab({
   getDecision,
   setDecision,
 }) {
-  const { isComplete, toggleTask } = useOnboardingTasks();
+  const isComplete = () => false;
+  const toggleTask = async () => {};
 
   // Filter out short-product clients who explicitly chose no-rollover
   const displayData = useMemo(() => {

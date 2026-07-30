@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import Dashboard from './components/Dashboard.jsx';
-import { useContactLog } from './utils/useContactLog.js';
 
 // Initial load reads from the Netlify Blobs cache via GET /api/mb-snapshot.
 // The Refresh button POSTs to /api/mb-snapshot to force a live pull + cache update.
@@ -27,7 +26,6 @@ export default function App() {
   const [loading, setLoading]         = useState(LOADING_ALL);
   const [errors, setErrors]           = useState({});
   const [lastRefresh, setLastRefresh] = useState(null);
-  const contactLog = useContactLog();
 
   const refresh = useCallback((forceRefresh = false) => {
     setLoading(LOADING_ALL);
@@ -78,7 +76,7 @@ export default function App() {
       errors={errors}
       lastRefresh={lastRefresh}
       onRefresh={() => refresh(true)}
-      contactLog={contactLog}
+      contactLog={{ contacted: {}, isContacted: () => false, logContact: async () => ({ logged: false }), getClientLogs: async () => [], loadingLog: false }}
     />
   );
 }

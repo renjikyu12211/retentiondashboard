@@ -17,12 +17,22 @@ export async function getStaffToken() {
       Password: process.env.MINDBODY_PASSWORD,
     }),
   });
+
+  const text = await res.text().catch(() => '');
   if (!res.ok) {
-    const text = await res.text();
     throw new Error(`Mindbody auth failed (${res.status}): ${text}`);
   }
-  const { AccessToken } = await res.json();
-  return AccessToken;
+
+  try {
+    const data = JSON.parse(text);
+    const { AccessToken } = data;
+    if (!AccessToken) {
+      throw new Error(`Mindbody auth returned no access token: ${text}`);
+    }
+    return AccessToken;
+  } catch (e) {
+    throw new Error(`Mindbody auth returned invalid JSON: ${text}`);
+  }
 }
 
 export function authHeaders(token) {

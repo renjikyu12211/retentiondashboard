@@ -35,7 +35,18 @@ export default function AttendanceChart() {
     setError(null);
 
     fetch(`/api/mb-attendance?period=${period}`)
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(async (r) => {
+        const text = await r.text();
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}${text ? `: ${text}` : ''}`);
+        }
+
+        try {
+          return JSON.parse(text);
+        } catch {
+          throw new Error('The API returned HTML instead of JSON. Start the Netlify dev server or confirm the function is deployed.');
+        }
+      })
       .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
 
@@ -49,15 +60,15 @@ export default function AttendanceChart() {
   const tickInterval = daily.length > 14 ? Math.ceil(daily.length / 14) - 1 : 0;
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       {/* Header row */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-gray-500" />
           <div>
-            <h2 className="font-semibold text-white">Attendance</h2>
+            <h2 className="font-semibold text-gray-900">Attendance</h2>
             {data?.stats?.dateRange && (
-              <p className="text-xs text-gray-500 mt-0.5">{data.stats.dateRange}</p>
+              <p className="text-xs text-gray-600 mt-0.5">{data.stats.dateRange}</p>
             )}
           </div>
         </div>
@@ -70,8 +81,8 @@ export default function AttendanceChart() {
               onClick={() => setPeriod(f.key)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 period === f.key
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                  ? 'bg-[#475AFF] text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'
               }`}
             >
               {f.label}
@@ -82,7 +93,7 @@ export default function AttendanceChart() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center h-56 gap-2 text-gray-500 text-sm">
+        <div className="flex items-center justify-center h-56 gap-2 text-gray-600 text-sm">
           <RefreshCw className="h-4 w-4 animate-spin" />
           Loading…
         </div>
@@ -105,8 +116,8 @@ export default function AttendanceChart() {
               { label: 'Peak visits',  value: stats.peakVisits },
             ].map(({ label, value }) => (
               <div key={label}>
-                <p className="text-xs text-gray-500">{label}</p>
-                <p className="text-xl font-bold text-white tabular-nums">{value ?? '–'}</p>
+                <p className="text-xs text-gray-600">{label}</p>
+                <p className="text-xl font-bold text-gray-900 tabular-nums">{value ?? '–'}</p>
               </div>
             ))}
           </div>
