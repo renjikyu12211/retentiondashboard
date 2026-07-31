@@ -34,15 +34,15 @@ export default function OnboardingBoard({
           return (
             <div
               key={week}
-              className={`flex flex-col shrink-0 rounded-xl border ${border} ${bg} w-72 sm:w-80 xl:flex-1 xl:min-w-64`}
+              className={`flex flex-col shrink-0 rounded-xl border border-slate-200 bg-white shadow-sm w-72 sm:w-80 xl:flex-1 xl:min-w-64`}
             >
               {/* Column header */}
-              <div className={`flex items-center justify-between px-4 py-3 border-b ${border}`}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-[#F4F5F6]">
                 <div>
-                  <p className={`text-sm font-semibold ${color}`}>{label}</p>
-                  <p className="text-[11px] text-gray-600">{sub}</p>
+                  <p className={`text-sm font-semibold text-[#475AFF]`}>{label}</p>
+                  <p className="text-[11px] text-slate-500">{sub}</p>
                 </div>
-                <span className={`rounded-full border ${border} px-2 py-0.5 text-xs font-bold ${color}`}>
+                <span className={`rounded-full border border-slate-200 px-2 py-0.5 text-xs font-bold text-[#475AFF]`}>
                   {cols.length}
                 </span>
               </div>
@@ -50,7 +50,7 @@ export default function OnboardingBoard({
               {/* Cards */}
               <div className="flex flex-col gap-2.5 p-3 overflow-y-auto max-h-[70vh]">
                 {cols.length === 0 ? (
-                  <p className="py-8 text-center text-xs text-gray-700">No clients this week</p>
+                  <p className="py-8 text-center text-xs text-slate-600">No clients this week</p>
                 ) : (
                   cols.map((client) => (
                     <OnboardingCard

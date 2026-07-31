@@ -6,11 +6,11 @@ import OnboardingReds  from './OnboardingReds.jsx';
 // Short-program products get removed from the board if no-rollover is selected
 const SHORT_PRODUCTS = new Set(['3-Session', '14-Day']);
 
-function StatPill({ label, value, color = 'text-gray-300' }) {
+function StatPill({ label, value, color = 'text-slate-900' }) {
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900 px-4 py-3 text-center">
+    <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-center">
       <p className={`text-xl font-bold tabular-nums ${color}`}>{value}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
     </div>
   );
 }
@@ -61,12 +61,12 @@ export default function OnboardingTab({
       <div className="space-y-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-800" />
+            <div key={i} className="h-16 animate-pulse rounded-lg bg-[#F4F5F6]" />
           ))}
         </div>
         <div className="flex gap-4 overflow-x-auto">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="shrink-0 w-72 h-64 animate-pulse rounded-xl bg-gray-800" />
+            <div key={i} className="shrink-0 w-72 h-64 animate-pulse rounded-xl bg-[#F4F5F6]" />
           ))}
         </div>
       </div>
@@ -75,8 +75,8 @@ export default function OnboardingTab({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-8 text-center">
-        <p className="text-sm text-red-400">Could not load onboarding data: {error}</p>
+      <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
+        <p className="text-sm text-red-600">Could not load onboarding data: {error}</p>
       </div>
     );
   }
@@ -92,23 +92,23 @@ export default function OnboardingTab({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-slate-900">
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatPill label="In pipeline" value={summary.total      ?? 0} color="text-white" />
-        <StatPill label="At risk"     value={summary.atRisk     ?? 0} color={summary.atRisk > 0 ? 'text-red-400' : 'text-gray-300'} />
-        <StatPill label="Week 1"      value={summary.week1Count ?? 0} color="text-blue-400" />
-        <StatPill label="Week 2"      value={summary.week2Count ?? 0} color="text-amber-400" />
-        <StatPill label="Week 3"      value={summary.week3Count ?? 0} color="text-violet-400" />
-        <StatPill label="Week 4"      value={summary.week4Count ?? 0} color="text-emerald-400" />
+        <StatPill label="In pipeline" value={summary.total      ?? 0} color="text-[#475AFF]" />
+        <StatPill label="At risk"     value={summary.atRisk     ?? 0} color={summary.atRisk > 0 ? 'text-red-600' : 'text-slate-500'} />
+        <StatPill label="Week 1"      value={summary.week1Count ?? 0} color="text-[#475AFF]" />
+        <StatPill label="Week 2"      value={summary.week2Count ?? 0} color="text-[#475AFF]" />
+        <StatPill label="Week 3"      value={summary.week3Count ?? 0} color="text-[#475AFF]" />
+        <StatPill label="Week 4"      value={summary.week4Count ?? 0} color="text-[#475AFF]" />
       </div>
 
       {/* Kanban board */}
       {isEmpty ? (
-        <div className="rounded-xl border border-gray-800 bg-gray-900 py-20 text-center">
-          <Users2 className="h-10 w-10 text-gray-700 mx-auto mb-3" />
-          <p className="text-sm text-gray-500 font-medium">No active onboarding clients</p>
-          <p className="text-xs text-gray-600 mt-1">
+        <div className="rounded-xl border border-gray-200 bg-[#F4F5F6] py-20 text-center">
+          <Users2 className="h-10 w-10 text-[#475AFF] mx-auto mb-3" />
+          <p className="text-sm text-slate-700 font-medium">No active onboarding clients</p>
+          <p className="text-xs text-slate-600 mt-1">
             Clients appear here when they purchase a 3-Session Pass, 14-Day Pass,<br />
             4-Week Kickstarter, Strong Dad or Strong Mum Transformation.
           </p>

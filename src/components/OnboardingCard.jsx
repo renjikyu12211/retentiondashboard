@@ -65,15 +65,15 @@ export default function OnboardingCard({
 
   // Card border/bg based on priority: rollover > at-risk > all tasks done
   const cardClass = isRollover
-    ? 'border-emerald-500/40 bg-emerald-950/10'
+    ? 'border-emerald-500/40 bg-emerald-50'
     : client.isAtRisk
-      ? 'border-red-500/30 bg-red-950/10'
+      ? 'border-red-500/30 bg-red-50'
       : allDone
-        ? 'border-emerald-500/20 bg-emerald-950/5'
-        : 'border-gray-800';
+        ? 'border-emerald-500/20 bg-emerald-50'
+        : 'border-slate-200 bg-white';
 
   return (
-    <div className={`rounded-lg border bg-gray-900 p-3.5 space-y-3 transition-colors ${cardClass}`}>
+    <div className={`rounded-lg border bg-white p-3.5 space-y-3 transition-colors ${cardClass}`}>
 
       {/* ── Row 1: name + badges + contact button ── */}
       <div className="flex items-start gap-2">
@@ -97,13 +97,13 @@ export default function OnboardingCard({
           {/* Contact details */}
           <div className="mt-0.5 space-y-px">
             {client.email && (
-              <p className="text-[11px] text-gray-600 truncate">{client.email}</p>
+              <p className="text-[11px] text-slate-600 truncate">{client.email}</p>
             )}
             {client.phone && (
-              <p className="text-[11px] text-gray-500 font-medium">{client.phone}</p>
+              <p className="text-[11px] text-slate-600 font-medium">{client.phone}</p>
             )}
             {!client.email && !client.phone && (
-              <p className="text-[11px] text-gray-700">No contact details</p>
+              <p className="text-[11px] text-slate-500">No contact details</p>
             )}
           </div>
         </div>

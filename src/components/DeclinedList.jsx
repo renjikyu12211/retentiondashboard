@@ -4,19 +4,19 @@ export default function DeclinedList({ data, loading, error }) {
   const clients = data?.declinedClients || [];
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 flex flex-col">
+    <div className="rounded-xl border border-gray-200 bg-white flex flex-col text-slate-900">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-800">
+      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-200">
         <div className="flex items-center gap-2">
-          <CreditCard className="h-4 w-4 text-red-400" />
-          <h2 className="font-semibold text-white">Declined Members</h2>
+          <CreditCard className="h-4 w-4 text-red-500" />
+          <h2 className="font-semibold text-slate-900">Declined Members</h2>
           {!loading && (
-            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400 border border-red-500/20">
+            <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 border border-red-100">
               {clients.length}
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500">Status: Declined · action required</p>
+        <p className="text-xs text-slate-500">Status: Declined · action required</p>
       </div>
 
       {/* Body */}
@@ -24,34 +24,34 @@ export default function DeclinedList({ data, loading, error }) {
         {loading && (
           <div className="space-y-2 p-5">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-800" />
+              <div key={i} className="h-10 animate-pulse rounded-lg bg-slate-200" />
             ))}
           </div>
         )}
 
         {error && !loading && (
-          <p className="p-5 text-sm text-red-400">Could not load: {error}</p>
+          <p className="p-5 text-sm text-red-600">Could not load: {error}</p>
         )}
 
         {!loading && !error && clients.length === 0 && (
           <div className="py-10 text-center">
-            <CheckCircle className="h-7 w-7 text-emerald-500/40 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">No declined members</p>
+            <CheckCircle className="h-7 w-7 text-slate-400 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">No declined members</p>
           </div>
         )}
 
         {!loading && !error && clients.map((client) => (
           <div
             key={client.id}
-            className="flex items-center justify-between px-5 py-2.5 border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 transition-colors"
+            className="flex items-center justify-between px-5 py-2.5 border-b border-slate-200/80 last:border-0 hover:bg-slate-100 transition-colors"
           >
             <div className="min-w-0 flex-1">
-              <p className="text-sm text-gray-200 truncate">{client.name || 'Unknown'}</p>
-              <p className="text-xs text-gray-500 truncate">
+              <p className="text-sm font-medium text-slate-900 truncate">{client.name || 'Unknown'}</p>
+              <p className="text-xs text-slate-500 truncate">
                 {client.email || client.phone || 'No contact details'}
               </p>
             </div>
-            <span className="ml-3 shrink-0 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
+            <span className="ml-3 shrink-0 rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
               Declined
             </span>
           </div>
