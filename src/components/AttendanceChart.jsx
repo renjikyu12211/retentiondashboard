@@ -16,9 +16,9 @@ const FILTERS = [
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 shadow-xl">
-      <p className="text-xs text-gray-400 mb-1">{label}</p>
-      <p className="text-sm font-semibold text-emerald-400">{payload[0].value} visits</p>
+    <div className="rounded-lg border border-white bg-white px-3 py-2 shadow-xl">
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className="text-sm font-semibold text-[#475AFF]">{payload[0].value} visits</p>
     </div>
   );
 };
@@ -127,8 +127,8 @@ export default function AttendanceChart() {
             <AreaChart data={daily} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <defs>
                 <linearGradient id="visitGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#10B981" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                  <stop offset="5%"  stopColor="#475AFF" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#475AFF" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="#1F2937" strokeDasharray="3 3" vertical={false} />
@@ -148,11 +148,11 @@ export default function AttendanceChart() {
               <Area
                 type="monotone"
                 dataKey="visits"
-                stroke="#10B981"
+                stroke="#475AFF"
                 strokeWidth={2}
                 fill="url(#visitGrad)"
                 dot={daily.length <= 14}
-                activeDot={{ r: 4, fill: '#10B981', stroke: '#065F46' }}
+                activeDot={{ r: 4, fill: '#475AFF', stroke: '#2F3DBD' }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -169,8 +169,8 @@ export default function AttendanceChart() {
                     axisLine={false}
                     tickLine={false}
                   />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: '#1F2937' }} />
-                  <Bar dataKey="visits" fill="#059669" radius={[3, 3, 0, 0]} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: '#F4F5F6' }} />
+                  <Bar dataKey="visits" fill="#475AFF" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
