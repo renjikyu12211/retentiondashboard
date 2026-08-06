@@ -4,9 +4,9 @@ import { buildMindbodyTestResult, getMindbodyEnvStatus } from '../netlify/functi
 const test = async () => {
   const status = getMindbodyEnvStatus({
     MINDBODY_API_KEY: 'ae51e80defd04fc0840e15ac174799e7',
-    MINDBODY_SITE_ID: '-99',
-    MINDBODY_USERNAME: 'mindbodysandboxsite@gmail.com',
-    MINDBODY_PASSWORD: 'Apitest1234',
+    MINDBODY_SITE_ID: '5726188',
+    MINDBODY_USERNAME: 'hello@feelgoodpilates.com.au',
+    MINDBODY_PASSWORD: 'F33lg00dpilates',
   });
 
   assert.deepEqual(status, {
@@ -18,9 +18,9 @@ const test = async () => {
 
   const result = buildMindbodyTestResult({
     MINDBODY_API_KEY: 'ae51e80defd04fc0840e15ac174799e7',
-    MINDBODY_SITE_ID: '-99',
-    MINDBODY_USERNAME: 'mindbodysandboxsite@gmail.com',
-    MINDBODY_PASSWORD: 'Apitest1234',
+    MINDBODY_SITE_ID: '5726188',
+    MINDBODY_USERNAME: 'hello@feelgoodpilates.com.au',
+    MINDBODY_PASSWORD: 'F33lg00dpilates',
   });
 
   assert.equal(result.ok, true);
