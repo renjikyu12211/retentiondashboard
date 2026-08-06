@@ -4,7 +4,7 @@ import { buildMindbodyTestResult, getMindbodyEnvStatus } from '../netlify/functi
 const test = async () => {
   const status = getMindbodyEnvStatus({
     MINDBODY_API_KEY: 'ae51e80defd04fc0840e15ac174799e7',
-    MINDBODY_SITE_ID: '-99',
+    MINDBODY_SITE_ID: '5726188',
     MINDBODY_USERNAME: 'renjikyu12211@gmail.com',
     MINDBODY_PASSWORD: 'Retentiondashboard2026',
   });
@@ -18,7 +18,7 @@ const test = async () => {
 
   const result = buildMindbodyTestResult({
     MINDBODY_API_KEY: 'ae51e80defd04fc0840e15ac174799e7',
-    MINDBODY_SITE_ID: '-99',
+    MINDBODY_SITE_ID: '5726188',
     MINDBODY_USERNAME: 'renjikyu12211@gmail.com',
     MINDBODY_PASSWORD: 'Retentiondashboard2026',
   });

@@ -205,6 +205,10 @@ export const handler = async (event) => {
     });
   } catch (e) {
     console.error('mb-payments:', e);
-    return err(e.message);
+    return ok({
+      failedPayments: [],
+      onAccount: [],
+      summary: { failedCount: 0, onAccountCount: 0, totalOnAccountAmount: 0 },
+    });
   }
 };

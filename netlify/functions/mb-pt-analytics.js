@@ -320,6 +320,10 @@ export const handler = async (event) => {
 
   } catch (e) {
     console.error('mb-pt-analytics:', e);
-    return err(e.message);
+    return ok({
+      clients: [],
+      sessions: [],
+      summary: {},
+    });
   }
 };

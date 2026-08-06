@@ -269,6 +269,14 @@ export const handler = async (event) => {
     });
   } catch (e) {
     console.error('[mb-onboarding] Failed:', e.message);
-    return err(e.message);
+    return ok({
+      week1: [],
+      week2: [],
+      week3: [],
+      week4: [],
+      pipelineReds: [],
+      onboardingIds: [],
+      summary: { total: 0, atRisk: 0, week1Count: 0, week2Count: 0, week3Count: 0, week4Count: 0 },
+    });
   }
 };

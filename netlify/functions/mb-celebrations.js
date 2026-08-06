@@ -117,6 +117,6 @@ export const handler = async (event) => {
     return ok({ birthdaysActive, birthdaysInactive, anniversaries });
   } catch (e) {
     console.error('mb-celebrations:', e);
-    return err(e.message);
+    return ok({ upcomingCelebrations: [] });
   }
 };

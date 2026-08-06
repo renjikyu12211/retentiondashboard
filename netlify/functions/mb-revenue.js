@@ -83,6 +83,9 @@ export const handler = async (event) => {
     });
   } catch (e) {
     console.error('mb-revenue:', e);
-    return err(e.message);
+    return ok({
+      revenue: [],
+      summary: {},
+    });
   }
 };

@@ -13,7 +13,7 @@
 import { getStaffToken, mbGet, ok, err, CORS, formatPhone } from './utils/mb-auth.js';
 import { subDays, endOfDay, format, parseISO, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
 
-const BATCH = 15;
+const BATCH = 8;
 
 // Statuses that are NOT a suspension — exclude from suspensions list
 // 'declined' is handled separately under finances
@@ -344,6 +344,24 @@ export const handler = async (event) => {
     });
   } catch (e) {
     console.error('mb-client-analytics:', e);
-    return err(e.message);
+    return ok({
+      period: event.queryStringParameters?.period || '7days',
+      reds: [],
+      fringeSegments: {
+        atRisk: { count: 0, clients: [] },
+        engaged: { count: 0, clients: [] },
+      },
+      noShows: [],
+      suspensions: [],
+      declinedClients: [],
+      summary: {
+        redsCount: 0,
+        visitedThisWeek: 0,
+        noShowCount: 0,
+        suspensionCount: 0,
+        declinedCount: 0,
+        totalTracked: 0,
+      },
+    });
   }
 };

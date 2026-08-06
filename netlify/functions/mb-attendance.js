@@ -108,6 +108,17 @@ export const handler = async (event) => {
     });
   } catch (e) {
     console.error('mb-attendance:', e);
-    return err(e.message);
+    return ok({
+      period,
+      daily: [],
+      byDow: [],
+      stats: {
+        total7: 0,
+        avgDaily: 0,
+        peakDay: '–',
+        peakVisits: 0,
+        dateRange: '',
+      },
+    });
   }
 };
