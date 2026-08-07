@@ -193,7 +193,30 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 ml-4 shrink-0">
+                <div className="flex items-center gap-3 ml-4 shrink-0">
+                  <div className="hidden sm:flex min-w-[180px] flex-col items-end text-right">
+                    <span className="text-[11px] uppercase tracking-wide text-gray-500">Pricing Option</span>
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {client.pricingOption || '—'}
+                    </span>
+                  </div>
+                  <div className="hidden xl:flex min-w-[140px] flex-col items-end text-right">
+                    <span className="text-[11px] uppercase tracking-wide text-gray-500">Last Visit Date</span>
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {client.lastVisitDate
+                        ? (() => {
+                            const lastDate = parseISO(client.lastVisitDate);
+                            const days = differenceInDays(new Date(), lastDate);
+                            if (days <= 0) return 'Today';
+                            if (days === 1) return '1 day ago';
+                            if (days < 30) return `${days} days ago`;
+                            if (days < 60) return '1 month ago';
+                            const months = Math.floor(days / 30);
+                            return `${months} months ago`;
+                          })()
+                        : '—'}
+                    </span>
+                  </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setSelected(client); }}
                     className={`rounded-lg border px-3 py-1 text-xs font-medium transition-colors ${

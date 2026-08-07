@@ -103,29 +103,37 @@ export default function SuspensionsList({ data, loading, error }) {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">{client.name || 'Unknown'}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-900 truncate">{client.name || 'Unknown'}</p>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${statusColor(client.status)}`}>
+                      {client.status || 'Suspended'}
+                    </span>
+                  </div>
 
-                  {/* Resume date — prominent orange line */}
-                  {lbl ? (
-                    <p className="flex items-center gap-1.5 mt-1 text-xs font-medium text-orange-400">
-                      <Calendar className="h-3 w-3 shrink-0" />
-                      {lbl}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs text-gray-600">No end date set</p>
-                  )}
+                  <div className="mt-2 rounded-lg border border-orange-200 bg-orange-50/70 px-3 py-2">
+                    {lbl ? (
+                      <p className="flex items-center gap-1.5 text-sm font-semibold text-orange-600">
+                        <Calendar className="h-3.5 w-3.5 shrink-0" />
+                        {lbl}
+                      </p>
+                    ) : (
+                      <p className="text-sm font-semibold text-orange-600">No resume date set</p>
+                    )}
+                  </div>
 
-                  {/* Reason + start date secondary row */}
                   {(reason || startLbl) && (
-                    <p className="mt-0.5 text-xs text-gray-600 truncate">
-                      {[reason, startLbl].filter(Boolean).join(' · ')}
-                    </p>
+                    <div className="mt-2 space-y-1">
+                      {reason && (
+                        <p className="text-xs font-medium text-gray-700">
+                          <span className="text-gray-500">Reason:</span> {reason}
+                        </p>
+                      )}
+                      {startLbl && (
+                        <p className="text-xs text-gray-600">{startLbl}</p>
+                      )}
+                    </div>
                   )}
                 </div>
-
-                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${statusColor(client.status)}`}>
-                  {client.status || 'Suspended'}
-                </span>
               </div>
             </div>
           );

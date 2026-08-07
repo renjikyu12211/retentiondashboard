@@ -1,47 +1,56 @@
 /**
- * 28-day rolling window, split into 4 weekly buckets.
- * Supports ?period=7days (default) or ?period=calendarWeek (last Mon–Sun)
- *
- * Returns:
- *   reds        – visited W2–W4 but NOT W1 (Red's List = inactive + churning)
- *   fringe      – visited W1, segmented by count (atRisk/engaged)
- *                 each client carries: sessionsThisWeek, trend, service, isFullyUtilising
- *   noShows     – clients with unsigned bookings in W1 window
- *   suspensions – clients with active SuspensionInfo or hold-type status
- *                 (excludes Terminated, Expired, Non Member)
+ * Red's List uses a simple 7-day inactivity view:
+ * clients who have zero signed-in attendance in the last 7 days.
  */
-import { getStaffToken, mbGet, ok, err, CORS, formatPhone } from './utils/mb-auth.js';
-import { subDays, endOfDay, format, parseISO, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
+import { subDays, endOfDay, format, startOfDay } from 'date-fns';
+import { getStaffToken, mbGet, ok, CORS, formatPhone, getSiteIdCandidates } from './utils/mb-auth.js';
 
-const BATCH = 8;
+const MAX_RECENT_CLASSES = 50;
+const MAX_CLIENTS = 2000;
+const VISIT_BATCH_SIZE = 8;
 
-// Statuses that are NOT a suspension — exclude from suspensions list
-// 'declined' is handled separately under finances
-const EXCLUDED_SUSPENSION_STATUSES = new Set([
-  'active', 'terminated', 'expired', 'non member', 'non-member', 'declined',
-]);
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-async function getClasses(token, startStr, endStr) {
-  let all = [];
-  let offset = 0;
-  while (true) {
-    const data = await mbGet('/class/classes', token, {
-      StartDateTime: startStr,
-      EndDateTime: endStr,
-      Limit: 200,
-      Offset: offset,
-    });
-    const classes = (data.Classes || []).filter((c) => (c.TotalBooked || 0) > 0);
-    all = all.concat(classes);
-    if ((data.Classes || []).length < 200 || offset >= 1800) break;
-    offset += 200;
-  }
-  return all;
+function getEmptyPayload(period) {
+  return {
+    period,
+    reds: [],
+    fringeSegments: {
+      atRisk: { count: 0, clients: [] },
+      engaged: { count: 0, clients: [] },
+    },
+    noShows: [],
+    suspensions: [],
+    declinedClients: [],
+    summary: {
+      redsCount: 0,
+      visitedThisWeek: 0,
+      noShowCount: 0,
+      suspensionCount: 0,
+      declinedCount: 0,
+      totalTracked: 0,
+    },
+  };
 }
 
-async function getVisits(token, classId) {
+async function getRecentClasses(token, startDate, endDate, maxClasses = MAX_RECENT_CLASSES) {
+  const classes = [];
+  let offset = 0;
+  while (classes.length < maxClasses) {
+    const data = await mbGet('/class/classes', token, {
+      StartDateTime: format(startDate, "yyyy-MM-dd'T'00:00:00"),
+      EndDateTime: format(endDate, "yyyy-MM-dd'T'23:59:59"),
+      Limit: 100,
+      Offset: offset,
+    });
+    const page = data.Classes || [];
+    const relevant = page.filter((cls) => (cls.TotalBooked || 0) > 0);
+    classes.push(...relevant);
+    if (page.length < 100 || offset >= 800) break;
+    offset += 100;
+  }
+  return classes.slice(0, maxClasses);
+}
+
+async function getClassVisits(token, classId) {
   try {
     const data = await mbGet('/class/classvisits', token, { ClassID: classId });
     return data.Class?.Visits || [];
@@ -50,318 +59,337 @@ async function getVisits(token, classId) {
   }
 }
 
-// Fetch active contracts for a client and return the soonest future resume date
-async function getContractResumeDate(token, clientId) {
+function getVisitDate(visit) {
+  const candidates = [visit.VisitDate, visit.VisitDateTime, visit.StartDateTime, visit.Date, visit.timestamp, visit.Timestamp];
+  for (const value of candidates) {
+    if (!value) continue;
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (value instanceof Date) return value.toISOString();
+  }
+  return null;
+}
+
+async function getClientVisits(token, clientId) {
   try {
-    const data = await mbGet('/client/clientcontracts', token, { clientId, Limit: 20 });
-    const contracts = data.ClientContracts || data.Contracts || [];
-    let earliest = null;
-    for (const c of contracts) {
-      // Try all field name variants MB might use
-      const raw =
-        c.ResumeDate    || c.resumeDate    ||
-        c.SuspendedUntil|| c.suspendedUntil||
-        c.HoldEndDate   || c.holdEndDate   ||
-        c.EndSuspension || c.endSuspension ||
-        null;
-      if (!raw) continue;
-      const d = new Date(raw);
-      if (isNaN(d.getTime())) continue;
-      if (!earliest || d < earliest) earliest = d;
-    }
-    // Log the full contract array once so we can see the actual field names
-    if (contracts.length > 0) {
-      console.log(`[mb-analytics] contract sample for ${clientId}:`, JSON.stringify(contracts[0]));
-    }
-    return earliest;
+    // Get the last 1 visit to find the most recent one.
+    const data = await mbGet('/client/clientvisits', token, { ClientId: clientId, Limit: 1 });
+    return data.Visits || [];
   } catch {
-    return null;
+    return [];
+  }
+}
+async function getClientMemberships(token, clientId) {
+  try {
+    const data = await mbGet('/client/clientmemberships', token, { ClientId: clientId, Limit: 200 });
+    return data.ClientMemberships || [];
+  } catch {
+    return [];
   }
 }
 
-async function getAllClients(token) {
-  const map = {};
+async function getAllClients(token, maxClients = MAX_CLIENTS) {
+  const clients = [];
   let offset = 0;
-  while (true) {
+  while (clients.length < maxClients) {
     const data = await mbGet('/client/clients', token, {
       ActiveOnly: false,
       Limit: 200,
       Offset: offset,
     });
-    const clients = data.Clients || [];
-    for (const c of clients) {
-      map[String(c.Id)] = {
-        id:             String(c.Id),
-        name:           `${c.FirstName || ''} ${c.LastName || ''}`.trim(),
-        email:          c.Email || '',
-        phone:          formatPhone(c.MobilePhone || c.HomePhone),
-        status:         c.Status || 'Active',
-        suspensionInfo: c.SuspensionInfo || null,
-        active:         c.Active !== false,
-      };
-    }
-    if (clients.length < 200 || offset >= 1800) break;
+    const page = data.Clients || [];
+    clients.push(...page);
+    if (page.length < 200 || offset >= 1000) break;
     offset += 200;
   }
-  return map;
+  return clients.slice(0, maxClients);
 }
 
-function trend(w1, w2, w3, w4) {
-  const prevWeeks = [w2, w3, w4];
-  const nonZero   = prevWeeks.filter((w) => w > 0);
-  if (!nonZero.length) return { avg: 0, direction: 'new' };
-  const avg     = prevWeeks.reduce((s, w) => s + w, 0) / 3;
-  const rounded = Math.round(avg * 10) / 10;
-  if (w1 > avg + 0.4) return { avg: rounded, direction: 'up' };
-  if (w1 < avg - 0.4) return { avg: rounded, direction: 'down' };
-  return { avg: rounded, direction: 'stable' };
+async function getClientsAcrossSites(siteIds, maxClients = MAX_CLIENTS) {
+  const allClients = [];
+  const seenIds = new Set();
+  for (const siteId of siteIds) {
+    try {
+      const token = await getStaffToken(siteId);
+      const clients = await getAllClients(token, Math.max(50, Math.floor(maxClients / Math.max(siteIds.length, 1))));
+      for (const client of clients) {
+        const key = String(client.Id || client.id || '');
+        if (!key || seenIds.has(key)) continue;
+        seenIds.add(key);
+        allClients.push(client);
+      }
+    } catch (error) {
+      console.warn(`[mb-client-analytics] failed to fetch clients for site ${siteId}:`, error.message);
+    }
+  }
+  return allClients;
 }
 
-// ─── Handler ────────────────────────────────────────────────────────────────
+function getPricingOption(client) {
+  const candidates = [
+    client.PricingOption,
+    client.PricingOptionName,
+    client.Program?.Name,
+    client.ProgramName,
+    client.Membership?.Name,
+    client.MembershipName,
+    client.CurrentMembership?.Name,
+    client.CurrentMembershipName,
+    client.Memberships?.[0]?.Name,
+  ];
+
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (value && typeof value === 'object' && value.Name) return value.Name;
+  }
+
+  return '';
+}
+
+function looksLikeMembershipOption(value = '') {
+  const text = String(value).toLowerCase();
+  return /membership|member|monthly|month|annual|year|unlimited/.test(text);
+}
+
+function isLikelyActiveClient(client) {
+  const status = (client.Status || client.status || '').toLowerCase();
+  if (client.Active === false) return true;
+  return status !== 'terminated' && status !== 'expired' && status !== 'inactive';
+}
+
+function mapClientToShape(client, lastVisitDate = null) {
+  return {
+    id: String(client.Id || client.id),
+    name: `${client.FirstName || client.firstName || ''} ${client.LastName || client.lastName || ''}`.trim() || client.name || 'Unknown',
+    email: client.Email || client.email || '',
+    phone: formatPhone(client.MobilePhone || client.HomePhone || client.phone || ''),
+    status: client.Status || client.status || 'Active',
+    service: '',
+    pricingOption: getPricingOption(client),
+    lastVisitDate,
+    trend: { direction: 'new', avg: 0 },
+    lastSessionDate: lastVisitDate,
+    weeklyAttendance: { w1: 0, w2: 0, w3: 0, w4: 0 },
+  };
+}
+
+export function buildSuspensionsList({ clientMap }) {
+  return Object.values(clientMap)
+    .filter((client) => {
+      const status = String(client.Status || client.status || '').toLowerCase();
+      if (client.Active === false) return true;
+      return status.includes('suspend') || status.includes('inactive') || status.includes('hold');
+    })
+    .map((client) => ({
+      ...mapClientToShape(client),
+      suspensionInfo: client.suspensionInfo || client.SuspensionInfo || null,
+      resumeDate: client.ResumeDate || client.resumeDate || client.suspensionInfo?.ResumeDate || client.suspensionInfo?.resumeDate || client.Suspension?.EndDate || null,
+      status: client.Status || client.status || 'Suspended',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function buildRedListClients({ clientMap, attendedClientIds, engagedClientIds = attendedClientIds, lastVisitDates = new Map() }) {
+  const redList = Object.values(clientMap)
+    .filter((client) => {
+      const id = String(client.Id || client.id);
+      const status = String(client.Status || client.status || '').toLowerCase();
+      const isSuspended = status.includes('suspend') || status.includes('hold');
+      const isActive = isLikelyActiveClient(client) && !isSuspended;
+      const hasMembership = !getPricingOption(client) || looksLikeMembershipOption(getPricingOption(client));
+      return (isActive && hasMembership && !engagedClientIds.has(id)) || isSuspended;
+    })
+    .map((client) => {
+      const shaped = mapClientToShape(client, lastVisitDates.get(String(client.Id || client.id)) || null);
+      const status = String(client.Status || client.status || '').toLowerCase();
+      if (status.includes('suspend') || status.includes('hold')) {
+        shaped.resumeDate = client.ResumeDate || client.resumeDate || client.suspensionInfo?.ResumeDate || client.suspensionInfo?.resumeDate || client.Suspension?.EndDate || null;
+      }
+      return shaped;
+    });
+  return redList.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function buildFringeSegments({ clientMap, attendanceCounts }) {
+  const atRisk = [];
+  const engaged = [];
+
+  for (const client of Object.values(clientMap)) {
+    const id = String(client.Id || client.id);
+    const count = attendanceCounts.get(id) || 0;
+    const shape = mapClientToShape(client);
+    shape.sessionsThisWeek = count;
+
+    if (count >= 1 && count <= 3) {
+      atRisk.push(shape);
+    } else if (count > 3) {
+      engaged.push(shape);
+    }
+  }
+
+  return {
+    atRisk: { count: atRisk.length, clients: atRisk.sort((a, b) => a.name.localeCompare(b.name)) },
+    engaged: { count: engaged.length, clients: engaged.sort((a, b) => a.name.localeCompare(b.name)) },
+  };
+}
+
+export function buildNoShowsList({ clientMap, classes, classVisits }) {
+  const byClient = new Map();
+
+  for (const cls of classes || []) {
+    const classId = String(cls.Id || cls.id);
+    const visits = classVisits?.[classId] || [];
+    for (const visit of visits) {
+      const clientId = String(visit.ClientId || visit.clientId || '');
+      if (!clientId) continue;
+
+      const status = String(visit.Status || visit.BookingStatus || '').toLowerCase();
+      const signedIn = visit.SignedIn === true;
+      const isNoShowOrAbsent = /absent|noshow|no show|no-show/i.test(status) || visit.NoShow === true || visit.IsNoShow === true;
+      if (!isNoShowOrAbsent) continue;
+
+      if (!byClient.has(clientId)) {
+        const client = clientMap?.[clientId] || null;
+        byClient.set(clientId, {
+          id: clientId,
+          name: client ? `${client.FirstName || client.firstName || ''} ${client.LastName || client.lastName || ''}`.trim() || 'Unknown' : 'Unknown',
+          email: client?.Email || client?.email || '',
+          phone: formatPhone(client?.MobilePhone || client?.HomePhone || client?.phone || ''),
+          noShowCount: 0,
+          sessions: [],
+        });
+      }
+
+      const entry = byClient.get(clientId);
+      entry.noShowCount += 1;
+      entry.sessions.push({
+        className: cls.Name || cls.name || 'Class',
+        day: cls.StartDateTime ? format(new Date(cls.StartDateTime), 'EEE') : '',
+        time: cls.StartDateTime ? format(new Date(cls.StartDateTime), 'p') : '',
+        staffName: cls.Staff?.Name || cls.staffName || '',
+      });
+    }
+  }
+
+  return Array.from(byClient.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
 
 export const handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' };
 
   try {
-    const token  = await getStaffToken();
-    const now    = new Date();
     const period = event.queryStringParameters?.period || '7days';
+    const siteIds = getSiteIdCandidates();
+    const now = new Date();
+    const startDate = startOfDay(subDays(now, 7));
+    const endDate = endOfDay(now);
 
-    // ── W1 window ──────────────────────────────────────────────────────────
-    let w1Start, w1End;
-    if (period === 'calendarWeek') {
-      w1Start = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
-      w1End   = endOfWeek(subWeeks(now, 1),   { weekStartsOn: 1 });
-    } else {
-      // default: rolling last 7 days, ending yesterday (today excluded)
-      w1Start = subDays(now, 7);
-      w1End   = endOfDay(subDays(now, 1)); // 23:59:59.999 yesterday
-    }
+    const recentClasses = [];
+    const classVisitMap = {};
+    const engagedClientIds = new Set();
+    const lastVisitDates = new Map();
 
-    // ── W2–W4 boundaries (7-day buckets going back from w1Start) ───────────
-    const b14 = subDays(w1Start, 7);
-    const b21 = subDays(w1Start, 14);
-    const b28 = subDays(w1Start, 21);
+    for (const siteId of siteIds) {
+      try {
+        const token = await getStaffToken(siteId);
+        const classes = await getRecentClasses(token, startDate, endDate);
+        recentClasses.push(...classes);
 
-    const startStr = format(b28,   "yyyy-MM-dd'T'00:00:00");
-    const endStr   = format(w1End, "yyyy-MM-dd'T'23:59:59");
+        for (let index = 0; index < classes.length; index += VISIT_BATCH_SIZE) {
+          const batch = classes.slice(index, index + VISIT_BATCH_SIZE);
+          const results = await Promise.allSettled(batch.map((cls) => getClassVisits(token, cls.Id)));
 
-    const allClasses = await getClasses(token, startStr, endStr);
+          for (let i = 0; i < results.length; i += 1) {
+            const cls = batch[i];
+            const result = results[i];
+            if (result.status !== 'fulfilled') continue;
+            const visits = result.value || [];
+            classVisitMap[String(cls.Id || cls.id)] = visits;
 
-    // Per-client data structures
-    const weeks         = {};  // id → { w1, w2, w3, w4 }
-    const services      = {};  // id → most-recent service name
-    const noShowMap     = {};  // id → [{ className, day, time, staffName }]
-    const lastVisitDate = {};  // id → most recent signed-in Date
+            for (const visit of visits) {
+              const clientId = visit.ClientId || visit.clientId;
+              if (!clientId) continue;
 
-    for (let i = 0; i < allClasses.length; i += BATCH) {
-      const batch   = allClasses.slice(i, i + BATCH);
-      const results = await Promise.allSettled(batch.map((cls) => getVisits(token, cls.Id)));
+              const status = String(visit.Status || visit.BookingStatus || '').toLowerCase();
+              const isCancelled = visit.LateCancelled === true || visit.Cancelled === true || /cancel/i.test(status);
+              if (!isCancelled) {
+                engagedClientIds.add(String(clientId));
+              }
 
-      batch.forEach((cls, idx) => {
-        if (results[idx].status !== 'fulfilled') return;
-        const classDate = parseISO(cls.StartDateTime);
-
-        // Determine week bucket
-        const inW1 = classDate >= w1Start && classDate <= w1End;
-        const inW2 = !inW1 && classDate > b14;
-        const inW3 = !inW1 && !inW2 && classDate > b21;
-        const inW4 = !inW1 && !inW2 && !inW3 && classDate > b28;
-
-        for (const visit of results[idx].value) {
-          const id = String(visit.ClientId || '');
-          if (!id) continue;
-
-          if (!weeks[id]) weeks[id] = { w1: 0, w2: 0, w3: 0, w4: 0 };
-
-          if (visit.SignedIn === true && !visit.LateCancelled) {
-            if (inW1) weeks[id].w1++;
-            if (inW2) weeks[id].w2++;
-            if (inW3) weeks[id].w3++;
-            if (inW4) weeks[id].w4++;
-
-            // Track the most recent service name (W1 priority)
-            if (inW1 && visit.ServiceName) services[id] = visit.ServiceName;
-            else if (!services[id] && visit.ServiceName) services[id] = visit.ServiceName;
-
-            // Track most recent signed-in visit date across all windows
-            if (!lastVisitDate[id] || classDate > lastVisitDate[id]) {
-              lastVisitDate[id] = classDate;
+              const visitDate = getVisitDate(visit);
+              if (visitDate) {
+                const existing = lastVisitDates.get(String(clientId));
+                if (!existing || visitDate > existing) {
+                  lastVisitDates.set(String(clientId), visitDate);
+                }
+              }
             }
           }
+        }
+      } catch (error) {
+        console.warn(`[mb-client-analytics] failed to fetch classes for site ${siteId}:`, error.message);
+      }
+    }
 
-          // No-show: booked but didn't sign in (W1 window)
-          if (inW1 && visit.SignedIn === false && !visit.LateCancelled) {
-            if (!noShowMap[id]) noShowMap[id] = [];
-            noShowMap[id].push({
-              className: cls.ClassDescription?.Name || cls.Name || 'Class',
-              day:       format(classDate, 'EEE d MMM'),
-              time:      format(classDate, 'h:mm a'),
-              staffName: `${cls.Staff?.FirstName || ''} ${cls.Staff?.LastName || ''}`.trim(),
-            });
+    // Fetch last visit for all clients
+    for (const siteId of siteIds) {
+      try {
+        const token = await getStaffToken(siteId);
+        const clientIds = clients.map((c) => c.Id).filter(Boolean);
+        for (const clientId of clientIds) {
+          const visits = await getClientVisits(token, clientId);
+          if (visits.length > 0) {
+            const visitDate = getVisitDate(visits[0]);
+            if (visitDate) lastVisitDates.set(String(clientId), visitDate);
           }
         }
-      });
+      } catch (error) {
+        console.warn(`[mb-client-analytics] failed to fetch client visits for site ${siteId}:`, error.message);
+      }
     }
-
-    // Fetch all clients for enrichment
-    const clientMap = await getAllClients(token);
-
-    function enrichClient(id, extra = {}) {
-      const c   = clientMap[id] || { id, name: `Client ${id}`, email: '', phone: '' };
-      const svc = services[id] || '';
-      const w   = weeks[id]   || { w1: 0, w2: 0, w3: 0, w4: 0 };
-      const t   = trend(w.w1, w.w2, w.w3, w.w4);
-      const is2x        = svc.toLowerCase().includes('2x');
-      const isFullyUtil = is2x && (extra.sessionsThisWeek ?? w.w1) >= 2;
-      const lastDate          = lastVisitDate[id] ? format(lastVisitDate[id], 'yyyy-MM-dd') : null;
-      const weeklyAttendance  = { w1: w.w1, w2: w.w2, w3: w.w3, w4: w.w4 };
-      return { ...c, service: svc, trend: t, is2xMember: is2x, isFullyUtilising: isFullyUtil, lastSessionDate: lastDate, weeklyAttendance, ...extra };
+    // Fetch memberships for all clients to get accurate pricing options
+    for (const siteId of siteIds) {
+      try {
+        const token = await getStaffToken(siteId);
+        const clientIds = clients.map(c => c.Id).filter(Boolean);
+        for (const clientId of clientIds) {
+          const client = clientMap[String(clientId)];
+          if (client && !getPricingOption(client)) {
+            const memberships = await getClientMemberships(token, clientId);
+            if (memberships.length > 0) client.Memberships = memberships;
+          }
+        }
+      } catch (error) {
+        console.warn(`[mb-client-analytics] failed to fetch memberships for site ${siteId}:`, error.message);
+      }
     }
-
-    // Red's List: visited W2–W4 but NOT W1, active contract only, not suspended
-    const visitedW1   = new Set(Object.keys(weeks).filter((id) => weeks[id].w1 > 0));
-    const visitedPrev = new Set(
-      Object.keys(weeks).filter((id) => weeks[id].w2 > 0 || weeks[id].w3 > 0 || weeks[id].w4 > 0)
-    );
-    const reds = [...visitedPrev]
-      .filter((id) => !visitedW1.has(id))
-      .filter((id) => {
-        const c = clientMap[id];
-        if (!c) return false;
-        // Active contract members only
-        if ((c.status || '').toLowerCase() !== 'active') return false;
-        // Exclude anyone on a suspension / hold
-        if (c.suspensionInfo && Object.keys(c.suspensionInfo).length > 0) return false;
-        return true;
-      })
-      .map((id) => enrichClient(id, { sessionsThisWeek: 0 }))
-      // Sort: most recently seen first → longest absent last
-      .sort((a, b) => {
-        if (!a.lastSessionDate && !b.lastSessionDate) return 0;
-        if (!a.lastSessionDate) return 1;
-        if (!b.lastSessionDate) return -1;
-        return b.lastSessionDate.localeCompare(a.lastSessionDate);
-      });
-
-    // Fringe (visited W1): atRisk = 1–2, engaged = 3+
-    const byCount = (min, max) =>
-      [...visitedW1]
-        .filter((id) => { const c = weeks[id].w1; return c >= min && c <= max; })
-        .map((id) => enrichClient(id, { sessionsThisWeek: weeks[id].w1 }));
-
-    const atRisk  = byCount(1, 2);
-    const engaged = byCount(3, 99);
-
-    const fringeSegments = {
-      atRisk:  { count: atRisk.length,  clients: atRisk.slice(0, 50)  },
-      engaged: { count: engaged.length, clients: engaged.slice(0, 50) },
-    };
-
-    // No-shows
-    const noShows = Object.entries(noShowMap)
-      .map(([id, sessions]) => ({ ...enrichClient(id), noShowCount: sessions.length, sessions }))
-      .sort((a, b) => b.noShowCount - a.noShowCount)
-      .slice(0, 50);
-
-    // Suspensions — only include actual holds/suspensions
-    // Excludes: Active, Terminated, Expired, Non Member, Declined (Declined goes to Finances)
-    const rawSuspensions = Object.values(clientMap)
-      .filter((c) => {
-        const statusLower = (c.status || '').toLowerCase();
-        if (EXCLUDED_SUSPENSION_STATUSES.has(statusLower)) return false;
-        if (c.suspensionInfo && Object.keys(c.suspensionInfo).length > 0) return true;
-        if (c.status && c.status !== 'Active') return true;
-        return false;
-      })
-      .slice(0, 50);
-
-    // Log suspension info structure so we can see what MB actually returns
-    if (rawSuspensions.length > 0) {
-      console.log('[mb-analytics] suspensionInfo sample:', JSON.stringify(rawSuspensions[0].suspensionInfo));
+    const clients = await getClientsAcrossSites(siteIds);
+    const clientMap = Object.fromEntries(clients.map((client) => [String(client.Id || client.id), client]));
+    const attendanceCounts = new Map();
+    for (const clientId of engagedClientIds) {
+      attendanceCounts.set(clientId, (attendanceCounts.get(clientId) || 0) + 1);
     }
-
-    // Fetch resume dates from client contracts (suspension dates live on contracts, not client profiles)
-    const contractResumes = await Promise.allSettled(
-      rawSuspensions.map((c) => getContractResumeDate(token, c.id))
-    );
-
-    const suspensions = rawSuspensions.map((c, i) => {
-      const contractResume = contractResumes[i].status === 'fulfilled' ? contractResumes[i].value : null;
-
-      // Also check the SuspensionInfo on the client object for dates
-      const info = c.suspensionInfo || {};
-      const infoResume =
-        info.ResumeDate    || info.resumeDate    ||
-        info.EndDate       || info.endDate       ||
-        info.SuspensionEnd || info.suspensionEnd ||
-        null;
-
-      // Prefer the contract resume date; fall back to client-level SuspensionInfo date
-      const resumeDate = contractResume
-        ? contractResume.toISOString()
-        : infoResume || null;
-
-      return {
-        id:             c.id,
-        name:           c.name,
-        email:          c.email,
-        phone:          c.phone,
-        status:         c.status,
-        suspensionInfo: c.suspensionInfo,
-        resumeDate,     // ISO string or null
-      };
-    });
-
-    // Declined clients — payment-declined status, shown under Finances
-    const declinedClients = Object.values(clientMap)
-      .filter((c) => (c.status || '').toLowerCase() === 'declined')
-      .map((c) => ({
-        id:     c.id,
-        name:   c.name,
-        email:  c.email,
-        phone:  c.phone,
-        status: c.status,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, 100);
+    const reds = buildRedListClients({ clientMap, attendedClientIds: engagedClientIds, engagedClientIds, lastVisitDates });
+    const fringeSegments = buildFringeSegments({ clientMap, attendanceCounts });
+    const noShows = buildNoShowsList({ clientMap, classes: recentClasses, classVisits: classVisitMap });
+    const suspensions = buildSuspensionsList({ clientMap });
 
     return ok({
-      period,
-      reds:           reds.slice(0, 150),
+      ...getEmptyPayload(period),
+      reds,
       fringeSegments,
       noShows,
       suspensions,
-      declinedClients,
       summary: {
-        redsCount:        reds.length,
-        visitedThisWeek:  visitedW1.size,
-        noShowCount:      noShows.length,
-        suspensionCount:  suspensions.length,
-        declinedCount:    declinedClients.length,
-        totalTracked:     Object.keys(weeks).length,
+        redsCount: reds.length,
+        visitedThisWeek: engagedClientIds.size,
+        noShowCount: noShows.length,
+        suspensionCount: suspensions.length,
+        declinedCount: 0,
+        totalTracked: clients.length,
       },
     });
   } catch (e) {
     console.error('mb-client-analytics:', e);
-    return ok({
-      period: event.queryStringParameters?.period || '7days',
-      reds: [],
-      fringeSegments: {
-        atRisk: { count: 0, clients: [] },
-        engaged: { count: 0, clients: [] },
-      },
-      noShows: [],
-      suspensions: [],
-      declinedClients: [],
-      summary: {
-        redsCount: 0,
-        visitedThisWeek: 0,
-        noShowCount: 0,
-        suspensionCount: 0,
-        declinedCount: 0,
-        totalTracked: 0,
-      },
-    });
+    return ok(getEmptyPayload(event.queryStringParameters?.period || '7days'));
   }
 };

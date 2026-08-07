@@ -20,10 +20,20 @@ function normalizeSiteId(value) {
   return (value || '').toString().trim().replace(/^['"]|['"]$/g, '');
 }
 
-function getSiteIdCandidates() {
+function parseSiteIdList(raw) {
+  return (raw || '')
+    .split(',')
+    .map((entry) => normalizeSiteId(entry))
+    .filter(Boolean);
+}
+
+export function getSiteIdCandidates() {
   const primary = normalizeSiteId(getEnvValue('MINDBODY_SITE_ID'));
   const candidates = [];
   if (primary) candidates.push(primary);
+  for (const siteId of parseSiteIdList(getEnvValue('MINDBODY_SITE_IDS'))) {
+    if (!candidates.includes(siteId)) candidates.push(siteId);
+  }
   if (!candidates.includes('5726188')) candidates.push('5726188');
   return candidates;
 }
@@ -36,8 +46,8 @@ export function baseHeaders(siteId = activeSiteId) {
   };
 }
 
-export async function getStaffToken() {
-  const siteIds = getSiteIdCandidates();
+export async function getStaffToken(siteIdOverride = null) {
+  const siteIds = siteIdOverride ? [normalizeSiteId(siteIdOverride)] : getSiteIdCandidates();
 
   for (const siteId of siteIds) {
     const res = await fetchWithTimeout(`${MB_BASE}/usertoken/issue`, {
