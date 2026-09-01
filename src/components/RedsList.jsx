@@ -28,10 +28,13 @@ function TrendBadge({ trend }) {
   );
 }
 
+const LOCATIONS = ['Ashburton', 'Carnegie', 'Hawthorn', 'Surrey Hills'];
+
 export default function RedsList({ data: propData, loading: propLoading, error: propError, contactLog, onboardingIds = new Set() }) {
   const [search, setSearch]         = useState('');
   const [selected, setSelected]     = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [location, setLocation]     = useState('');
   const [period, setPeriod]         = useState('7days');
   const [localData, setLocalData]   = useState(null);
   const [localLoading, setLocalLoading] = useState(false);
@@ -63,7 +66,8 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
   }, [period, propData]);
 
   // Exclude clients currently in the onboarding pipeline — they're tracked separately
-  const clients = (data?.reds || []).filter((c) => !onboardingIds.has(c.id));
+  const allClients = (data?.reds || []).filter((c) => !onboardingIds.has(c.id));
+  const clients = location ? allClients.filter((c) => c.homeLocation === location) : allClients;
 
   const isContacted   = contactLog?.isContacted  ?? (() => false);
   const logContact    = contactLog?.logContact    ?? null;
@@ -96,6 +100,16 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
           )}
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 focus:border-red-500 focus:outline-none"
+          >
+            <option value="">All Locations</option>
+            {LOCATIONS.map((loc) => (
+              <option key={loc} value={loc}>{loc}</option>
+            ))}
+          </select>
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
             {[
               { key: '7days',        label: 'Last 7 days' },
@@ -204,17 +218,8 @@ export default function RedsList({ data: propData, loading: propLoading, error: 
                     <span className="text-[11px] uppercase tracking-wide text-gray-500">Last Visit Date</span>
                     <span className="text-sm font-medium text-gray-900 truncate">
                       {client.lastVisitDate
-                        ? (() => {
-                            const lastDate = parseISO(client.lastVisitDate);
-                            const days = differenceInDays(new Date(), lastDate);
-                            if (days <= 0) return 'Today';
-                            if (days === 1) return '1 day ago';
-                            if (days < 30) return `${days} days ago`;
-                            if (days < 60) return '1 month ago';
-                            const months = Math.floor(days / 30);
-                            return `${months} months ago`;
-                          })()
-                        : '—'}
+                        ? format(parseISO(client.lastVisitDate), 'd MMM yyyy')
+                        : 'Never'}
                     </span>
                   </div>
                   <button

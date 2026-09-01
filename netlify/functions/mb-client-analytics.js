@@ -71,8 +71,9 @@ function getVisitDate(visit) {
 
 async function getClientVisits(token, clientId) {
   try {
-    // Get the last 1 visit to find the most recent one.
-    const data = await mbGet('/client/clientvisits', token, { ClientId: clientId, Limit: 1 });
+    // Fetch a page of visits and pick the most recent by date — the API's
+    // default sort order isn't guaranteed, so we don't rely on Visits[0].
+    const data = await mbGet('/client/clientvisits', token, { ClientId: clientId, Limit: 50 });
     return data.Visits || [];
   } catch {
     return [];
@@ -142,10 +143,16 @@ function looksLikeMembershipOption(value = '') {
   return /membership|member|monthly|month|annual|year|unlimited/.test(text);
 }
 
+function getHomeLocation(client) {
+  const value = client.HomeLocation || client.homeLocation || client.Location;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (value && typeof value === 'object' && value.Name) return value.Name.trim();
+  return '';
+}
+
 function isLikelyActiveClient(client) {
   const status = (client.Status || client.status || '').toLowerCase();
-  if (client.Active === false) return true;
-  return status !== 'terminated' && status !== 'expired' && status !== 'inactive';
+  return status === 'active';
 }
 
 function mapClientToShape(client, lastVisitDate = null) {
@@ -157,6 +164,7 @@ function mapClientToShape(client, lastVisitDate = null) {
     status: client.Status || client.status || 'Active',
     service: '',
     pricingOption: getPricingOption(client),
+    homeLocation: getHomeLocation(client),
     lastVisitDate,
     trend: { direction: 'new', avg: 0 },
     lastSessionDate: lastVisitDate,
@@ -180,7 +188,8 @@ export function buildSuspensionsList({ clientMap }) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function buildRedListClients({ clientMap, engagedClientIds, lastVisitDates = new Map() }) {
+export function buildRedListClients({ clientMap, staleBefore, lastVisitDates = new Map() }) {
+  const cutoff = staleBefore ? new Date(staleBefore).toISOString() : null;
   const redList = Object.values(clientMap)
     .filter((client) => {
       const id = String(client.Id || client.id);
@@ -191,7 +200,10 @@ export function buildRedListClients({ clientMap, engagedClientIds, lastVisitDate
       // exclude when we positively know it's a non-membership product.
       const pricingOption = getPricingOption(client);
       const hasMembership = !pricingOption || looksLikeMembershipOption(pricingOption);
-      return isActive && hasMembership && !engagedClientIds.has(id);
+      const lastVisit = lastVisitDates.get(id) || null;
+      // Red = never visited, or last visit was before the 7-day cutoff
+      const isStale = !lastVisit || (cutoff && lastVisit < cutoff);
+      return isActive && hasMembership && isStale;
     })
     .map((client) => mapClientToShape(client, lastVisitDates.get(String(client.Id || client.id)) || null));
   return redList.sort((a, b) => a.name.localeCompare(b.name));
@@ -337,9 +349,13 @@ export const handler = async (event) => {
           const batch = redCandidateIds.slice(index, index + RED_LOOKUP_BATCH_SIZE);
           const results = await Promise.allSettled(batch.map((clientId) => getClientVisits(token, clientId)));
           for (let i = 0; i < batch.length; i += 1) {
-            if (results[i].status === 'fulfilled' && results[i].value.length > 0) {
-              const visitDate = getVisitDate(results[i].value[0]);
-              if (visitDate) lastVisitDates.set(String(batch[i]), visitDate);
+            if (results[i].status !== 'fulfilled') continue;
+            for (const visit of results[i].value) {
+              const visitDate = getVisitDate(visit);
+              if (!visitDate) continue;
+              const clientId = String(batch[i]);
+              const existing = lastVisitDates.get(clientId);
+              if (!existing || visitDate > existing) lastVisitDates.set(clientId, visitDate);
             }
           }
         }
@@ -351,7 +367,7 @@ export const handler = async (event) => {
     for (const clientId of engagedClientIds) {
       attendanceCounts.set(clientId, (attendanceCounts.get(clientId) || 0) + 1);
     }
-    const reds = buildRedListClients({ clientMap, engagedClientIds, lastVisitDates });
+    const reds = buildRedListClients({ clientMap, staleBefore: startDate, lastVisitDates });
     const fringeSegments = buildFringeSegments({ clientMap, attendanceCounts });
     const noShows = buildNoShowsList({ clientMap, classes: recentClasses, classVisits: classVisitMap });
     const suspensions = buildSuspensionsList({ clientMap });

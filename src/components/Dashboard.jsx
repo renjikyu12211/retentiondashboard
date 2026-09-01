@@ -3,7 +3,6 @@ import { format, isToday } from 'date-fns';
 import { RefreshCw, Activity, DollarSign } from 'lucide-react';
 import StatsGrid          from './StatsGrid.jsx';
 import AttendanceChart    from './AttendanceChart.jsx';
-import NoShowsList        from './NoShowsList.jsx';
 import SuspensionsList    from './SuspensionsList.jsx';
 import RedsList           from './RedsList.jsx';
 import FringeClientsTable from './FringeClientsTable.jsx';
@@ -108,18 +107,11 @@ export default function Dashboard({ data, loading, errors, lastRefresh, onRefres
               loading={loading}
             />
             <AttendanceChart />
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <NoShowsList
-                data={data.clientAnalytics}
-                loading={loading.clientAnalytics}
-                error={errors.clientAnalytics}
-              />
-              <SuspensionsList
-                data={data.clientAnalytics}
-                loading={loading.clientAnalytics}
-                error={errors.clientAnalytics}
-              />
-            </div>
+            <SuspensionsList
+              data={data.clientAnalytics}
+              loading={loading.clientAnalytics}
+              error={errors.clientAnalytics}
+            />
             <RedsList
               data={data.clientAnalytics}
               loading={loading.clientAnalytics}
