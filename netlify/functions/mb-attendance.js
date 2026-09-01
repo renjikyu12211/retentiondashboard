@@ -41,8 +41,9 @@ function getDateRange(period) {
 export const handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' };
 
+  let period = event.queryStringParameters?.period || '7days';
+
   try {
-    const period = event.queryStringParameters?.period || '7days';
     const { start, end } = getDateRange(period);
 
     const token = await getStaffToken();
@@ -108,17 +109,8 @@ export const handler = async (event) => {
     });
   } catch (e) {
     console.error('mb-attendance:', e);
-    return ok({
-      period,
-      daily: [],
-      byDow: [],
-      stats: {
-        total7: 0,
-        avgDaily: 0,
-        peakDay: '–',
-        peakVisits: 0,
-        dateRange: '',
-      },
-    });
+    // Surface the real failure instead of silently returning zeros, so the
+    // widget shows "Could not load" with a reason rather than blank stats.
+    return err(e.message);
   }
 };
