@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { format, isToday } from 'date-fns';
-import { RefreshCw, Activity, DollarSign, Users2, Dumbbell } from 'lucide-react';
+import { RefreshCw, Activity, DollarSign } from 'lucide-react';
 import StatsGrid          from './StatsGrid.jsx';
 import AttendanceChart    from './AttendanceChart.jsx';
 import NoShowsList        from './NoShowsList.jsx';
@@ -10,15 +10,12 @@ import FringeClientsTable from './FringeClientsTable.jsx';
 import RevenueCards       from './RevenueCards.jsx';
 import PaymentIssuesTable from './PaymentIssuesTable.jsx';
 import DeclinedList       from './DeclinedList.jsx';
-import OnboardingTab          from './OnboardingTab.jsx';
-import PersonalTrainingTab    from './PersonalTrainingTab.jsx';
 import CelebrationsPanel   from './CelebrationsPanel.jsx';
 
+// Onboarding and Personal Training tabs are hidden but kept in the codebase for now.
 const TABS = [
   { key: 'operations',        label: 'Operations',        Icon: Activity  },
   { key: 'finances',          label: 'Finances',          Icon: DollarSign },
-  { key: 'onboarding',        label: 'Onboarding',        Icon: Users2    },
-  { key: 'personalTraining',  label: 'Personal Training', Icon: Dumbbell  },
 ];
 
 const SHORT_PRODUCTS = new Set(['3-Session', '14-Day']);
@@ -49,14 +46,6 @@ export default function Dashboard({ data, loading, errors, lastRefresh, onRefres
       })
       .map((c) => c.id)
   ), [allOnboardingClients, decisions]);
-
-  const atRiskCount = useMemo(() => {
-    const reds = data.onboarding?.pipelineReds || [];
-    return reds.filter((c) => {
-      if (!SHORT_PRODUCTS.has(c.shortProduct)) return true;
-      return decisions[c.id]?.decision !== 'no-rollover';
-    }).length;
-  }, [data.onboarding, decisions]);
 
   return (
     <div className="min-h-screen bg-[#F4F5F6] text-gray-900">
@@ -101,12 +90,6 @@ export default function Dashboard({ data, loading, errors, lastRefresh, onRefres
               >
                 <Icon className="h-4 w-4" />
                 {label}
-                {/* Red badge for at-risk onboarding clients */}
-                {key === 'onboarding' && atRiskCount > 0 && (
-                  <span className="rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-bold text-red-400 border border-red-500/30">
-                    {atRiskCount}
-                  </span>
-                )}
               </button>
             ))}
           </nav>
@@ -175,29 +158,6 @@ export default function Dashboard({ data, loading, errors, lastRefresh, onRefres
               error={errors.payments}
             />
           </>
-        )}
-
-        {/* ─ Onboarding ─ */}
-        {tab === 'onboarding' && (
-          <OnboardingTab
-            data={data.onboarding}
-            loading={loading.onboarding}
-            error={errors.onboarding}
-            contactLog={contactLog}
-            decisions={decisions}
-            getDecision={getDecision}
-            setDecision={setDecision}
-          />
-        )}
-
-        {/* ─ Personal Training ─ */}
-        {tab === 'personalTraining' && (
-          <PersonalTrainingTab
-            data={data.pt}
-            loading={loading.pt}
-            error={errors.pt}
-            contactLog={contactLog}
-          />
         )}
       </main>
     </div>

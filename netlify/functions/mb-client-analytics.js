@@ -78,14 +78,6 @@ async function getClientVisits(token, clientId) {
     return [];
   }
 }
-async function getClientMemberships(token, clientId) {
-  try {
-    const data = await mbGet('/client/clientmemberships', token, { ClientId: clientId, Limit: 200 });
-    return data.ClientMemberships || [];
-  } catch {
-    return [];
-  }
-}
 
 async function getAllClients(token, maxClients = MAX_CLIENTS) {
   const clients = [];
@@ -188,24 +180,20 @@ export function buildSuspensionsList({ clientMap }) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function buildRedListClients({ clientMap, attendedClientIds, engagedClientIds = attendedClientIds, lastVisitDates = new Map() }) {
+export function buildRedListClients({ clientMap, engagedClientIds, lastVisitDates = new Map() }) {
   const redList = Object.values(clientMap)
     .filter((client) => {
       const id = String(client.Id || client.id);
       const status = String(client.Status || client.status || '').toLowerCase();
       const isSuspended = status.includes('suspend') || status.includes('hold');
       const isActive = isLikelyActiveClient(client) && !isSuspended;
-      const hasMembership = !getPricingOption(client) || looksLikeMembershipOption(getPricingOption(client));
-      return (isActive && hasMembership && !engagedClientIds.has(id)) || isSuspended;
+      // Pricing option is often missing from the base client record — only
+      // exclude when we positively know it's a non-membership product.
+      const pricingOption = getPricingOption(client);
+      const hasMembership = !pricingOption || looksLikeMembershipOption(pricingOption);
+      return isActive && hasMembership && !engagedClientIds.has(id);
     })
-    .map((client) => {
-      const shaped = mapClientToShape(client, lastVisitDates.get(String(client.Id || client.id)) || null);
-      const status = String(client.Status || client.status || '').toLowerCase();
-      if (status.includes('suspend') || status.includes('hold')) {
-        shaped.resumeDate = client.ResumeDate || client.resumeDate || client.suspensionInfo?.ResumeDate || client.suspensionInfo?.resumeDate || client.Suspension?.EndDate || null;
-      }
-      return shaped;
-    });
+    .map((client) => mapClientToShape(client, lastVisitDates.get(String(client.Id || client.id)) || null));
   return redList.sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -283,6 +271,9 @@ export const handler = async (event) => {
     const startDate = startOfDay(subDays(now, 7));
     const endDate = endOfDay(now);
 
+    const clients = await getClientsAcrossSites(siteIds);
+    const clientMap = Object.fromEntries(clients.map((client) => [String(client.Id || client.id), client]));
+
     const recentClasses = [];
     const classVisitMap = {};
     const engagedClientIds = new Set();
@@ -330,45 +321,37 @@ export const handler = async (event) => {
       }
     }
 
-    // Fetch last visit for all clients
+    // Only look up last-visit dates for clients who are active and didn't
+    // attend a class this week — the pool that could end up on Red's List.
+    const MAX_RED_CANDIDATES = 400;
+    const RED_LOOKUP_BATCH_SIZE = 25;
+    const redCandidateIds = clients
+      .map((c) => String(c.Id || c.id))
+      .filter((id) => id && !engagedClientIds.has(id) && isLikelyActiveClient(clientMap[id] || {}))
+      .slice(0, MAX_RED_CANDIDATES);
+
     for (const siteId of siteIds) {
       try {
         const token = await getStaffToken(siteId);
-        const clientIds = clients.map((c) => c.Id).filter(Boolean);
-        for (const clientId of clientIds) {
-          const visits = await getClientVisits(token, clientId);
-          if (visits.length > 0) {
-            const visitDate = getVisitDate(visits[0]);
-            if (visitDate) lastVisitDates.set(String(clientId), visitDate);
+        for (let index = 0; index < redCandidateIds.length; index += RED_LOOKUP_BATCH_SIZE) {
+          const batch = redCandidateIds.slice(index, index + RED_LOOKUP_BATCH_SIZE);
+          const results = await Promise.allSettled(batch.map((clientId) => getClientVisits(token, clientId)));
+          for (let i = 0; i < batch.length; i += 1) {
+            if (results[i].status === 'fulfilled' && results[i].value.length > 0) {
+              const visitDate = getVisitDate(results[i].value[0]);
+              if (visitDate) lastVisitDates.set(String(batch[i]), visitDate);
+            }
           }
         }
       } catch (error) {
-        console.warn(`[mb-client-analytics] failed to fetch client visits for site ${siteId}:`, error.message);
+        console.warn(`[mb-client-analytics] failed to fetch client visits/memberships for site ${siteId}:`, error.message);
       }
     }
-    // Fetch memberships for all clients to get accurate pricing options
-    for (const siteId of siteIds) {
-      try {
-        const token = await getStaffToken(siteId);
-        const clientIds = clients.map(c => c.Id).filter(Boolean);
-        for (const clientId of clientIds) {
-          const client = clientMap[String(clientId)];
-          if (client && !getPricingOption(client)) {
-            const memberships = await getClientMemberships(token, clientId);
-            if (memberships.length > 0) client.Memberships = memberships;
-          }
-        }
-      } catch (error) {
-        console.warn(`[mb-client-analytics] failed to fetch memberships for site ${siteId}:`, error.message);
-      }
-    }
-    const clients = await getClientsAcrossSites(siteIds);
-    const clientMap = Object.fromEntries(clients.map((client) => [String(client.Id || client.id), client]));
     const attendanceCounts = new Map();
     for (const clientId of engagedClientIds) {
       attendanceCounts.set(clientId, (attendanceCounts.get(clientId) || 0) + 1);
     }
-    const reds = buildRedListClients({ clientMap, attendedClientIds: engagedClientIds, engagedClientIds, lastVisitDates });
+    const reds = buildRedListClients({ clientMap, engagedClientIds, lastVisitDates });
     const fringeSegments = buildFringeSegments({ clientMap, attendanceCounts });
     const noShows = buildNoShowsList({ clientMap, classes: recentClasses, classVisits: classVisitMap });
     const suspensions = buildSuspensionsList({ clientMap });

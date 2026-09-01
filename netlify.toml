@@ -12,6 +12,9 @@
 [functions."mb-onboarding"]
   timeout = 26
 
+[functions."mb-client-analytics"]
+  timeout = 26
+
 [functions."mb-pt-analytics"]
   timeout = 26
 
