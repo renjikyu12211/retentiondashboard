@@ -8,6 +8,74 @@ import { getStaffToken, mbGet, ok, CORS, formatPhone, getSiteIdCandidates } from
 const MAX_RECENT_CLASSES = 50;
 const MAX_CLIENTS = 2000;
 const VISIT_BATCH_SIZE = 8;
+const STUDIO_LOCATIONS = ['Carnegie', 'Ashburton', 'Surrey Hills', 'Hawthorn'];
+
+function normalizeStatusText(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isSuspendedStatusValue(value) {
+  const status = normalizeStatusText(value);
+  return /suspend|paused|hold|inactive|cancelled|canceled|expired|deactivated|past due/.test(status);
+}
+
+function isActiveStatusValue(value) {
+  const status = normalizeStatusText(value);
+  return status === 'active' || status.includes('active');
+}
+
+function collectStatusEntries(node, prefix = '') {
+  const entries = [];
+  if (!node || typeof node !== 'object') return entries;
+
+  for (const [key, value] of Object.entries(node)) {
+    const nextKey = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === 'object') {
+      entries.push(...collectStatusEntries(value, nextKey));
+      continue;
+    }
+    if (typeof value === 'string' || typeof value === 'number') {
+      entries.push([nextKey, String(value)]);
+    }
+  }
+
+  return entries;
+}
+
+function hasActiveMembershipStatus(client) {
+  const status = normalizeStatusText(client.Status ?? client.status ?? '');
+  return status === 'active' || status.includes('active');
+}
+
+function hasSuspendedContractOrServiceStatus(client) {
+  const entries = collectStatusEntries(client);
+  const suspended = entries.some(([key, value]) => {
+    const normalizedKey = key.toLowerCase();
+    const hasRelevantStatusField = /status|state/.test(normalizedKey) || /contract|pricing|service|plan|package|membership|account/.test(normalizedKey);
+    return hasRelevantStatusField && isSuspendedStatusValue(value);
+  });
+
+  if (suspended) return true;
+
+  const suspensionInfo = client.suspensionInfo || client.SuspensionInfo || null;
+  const resumeDate = client.ResumeDate || client.resumeDate || client.Suspension?.EndDate || client.EndDate || client.endDate || null;
+  return Boolean(suspensionInfo) || Boolean(resumeDate);
+}
+
+function getStudioName(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const match = STUDIO_LOCATIONS.find((studio) => raw.toLowerCase().includes(studio.toLowerCase()));
+  return match || '';
+}
+
+function getMostVisitedLocation(clientId, locationCounts = new Map()) {
+  const counts = locationCounts.get(String(clientId)) || new Map();
+  const entries = [...counts.entries()].filter(([location]) => STUDIO_LOCATIONS.includes(location));
+  if (!entries.length) return '';
+  entries.sort((a, b) => b[1] - a[1]);
+  return entries[0][0];
+}
 
 function getEmptyPayload(period) {
   return {
@@ -155,6 +223,15 @@ function isLikelyActiveClient(client) {
   return status === 'active';
 }
 
+function hasActiveMemberStatus(client) {
+  const status = String(client.Status || client.status || '').toLowerCase();
+  const homeLocation = getHomeLocation(client);
+  const isActiveFlag = client.Active !== false;
+  const isActiveStatus = status === 'active' || status.includes('active');
+  const hasStudioHomeLocation = /home studio|studio/i.test(homeLocation);
+  return isActiveFlag && (isActiveStatus || hasStudioHomeLocation);
+}
+
 function mapClientToShape(client, lastVisitDate = null) {
   return {
     id: String(client.Id || client.id),
@@ -172,19 +249,34 @@ function mapClientToShape(client, lastVisitDate = null) {
   };
 }
 
-export function buildSuspensionsList({ clientMap }) {
+export function buildSuspensionsList({ clientMap, locationCounts = new Map() }) {
   return Object.values(clientMap)
     .filter((client) => {
-      const status = String(client.Status || client.status || '').toLowerCase();
-      if (client.Active === false) return true;
-      return status.includes('suspend') || status.includes('inactive') || status.includes('hold');
+      const status = normalizeStatusText(client.Status || client.status || '');
+      const suspensionInfo = client.suspensionInfo || client.SuspensionInfo || null;
+      const resumeDate = client.ResumeDate || client.resumeDate || client.suspensionInfo?.ResumeDate || client.suspensionInfo?.resumeDate || client.Suspension?.EndDate || client.EndDate || client.endDate || null;
+      const hasSuspensionSignal =
+        status.includes('suspend') ||
+        status.includes('hold') ||
+        status.includes('paused') ||
+        Boolean(suspensionInfo) ||
+        Boolean(resumeDate) ||
+        hasSuspendedContractOrServiceStatus(client);
+
+      return hasActiveMembershipStatus(client) && hasSuspensionSignal;
     })
-    .map((client) => ({
-      ...mapClientToShape(client),
-      suspensionInfo: client.suspensionInfo || client.SuspensionInfo || null,
-      resumeDate: client.ResumeDate || client.resumeDate || client.suspensionInfo?.ResumeDate || client.suspensionInfo?.resumeDate || client.Suspension?.EndDate || null,
-      status: client.Status || client.status || 'Suspended',
-    }))
+    .map((client) => {
+      const id = String(client.Id || client.id);
+      const resumeDate = client.ResumeDate || client.resumeDate || client.suspensionInfo?.ResumeDate || client.suspensionInfo?.resumeDate || client.Suspension?.EndDate || client.SuspensionInfo?.EndDate || client.EndDate || client.endDate || null;
+      return {
+        ...mapClientToShape(client),
+        suspensionInfo: client.suspensionInfo || client.SuspensionInfo || null,
+        resumeDate,
+        endDate: resumeDate,
+        mostVisitedLocation: getMostVisitedLocation(id, locationCounts) || getHomeLocation(client) || '',
+        status: client.Status || client.status || 'Suspended',
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -290,6 +382,7 @@ export const handler = async (event) => {
     const classVisitMap = {};
     const engagedClientIds = new Set();
     const lastVisitDates = new Map();
+    const clientLocationCounts = new Map();
 
     for (const siteId of siteIds) {
       try {
@@ -314,8 +407,19 @@ export const handler = async (event) => {
 
               const status = String(visit.Status || visit.BookingStatus || '').toLowerCase();
               const isCancelled = visit.LateCancelled === true || visit.Cancelled === true || /cancel/i.test(status);
+              const signedIn = visit.SignedIn === true || /signed in/i.test(status);
+
               if (!isCancelled) {
                 engagedClientIds.add(String(clientId));
+              }
+
+              if (signedIn) {
+                const studioName = getStudioName(cls.Location || cls.location || cls.Studio?.Name || cls.StudioName || cls.LocationName || cls.SiteName || cls.locationName || '');
+                if (studioName) {
+                  const counts = clientLocationCounts.get(String(clientId)) || new Map();
+                  counts.set(studioName, (counts.get(studioName) || 0) + 1);
+                  clientLocationCounts.set(String(clientId), counts);
+                }
               }
 
               const visitDate = getVisitDate(visit);
@@ -370,7 +474,7 @@ export const handler = async (event) => {
     const reds = buildRedListClients({ clientMap, staleBefore: startDate, lastVisitDates });
     const fringeSegments = buildFringeSegments({ clientMap, attendanceCounts });
     const noShows = buildNoShowsList({ clientMap, classes: recentClasses, classVisits: classVisitMap });
-    const suspensions = buildSuspensionsList({ clientMap });
+    const suspensions = buildSuspensionsList({ clientMap, locationCounts: clientLocationCounts });
 
     return ok({
       ...getEmptyPayload(period),

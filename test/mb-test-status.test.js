@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildMindbodyTestResult, getMindbodyEnvStatus } from '../netlify/functions/utils/mb-test-status.js';
-import { buildFringeSegments, buildRedListClients, buildNoShowsList } from '../netlify/functions/mb-client-analytics.js';
+import { buildFringeSegments, buildRedListClients, buildNoShowsList, buildSuspensionsList } from '../netlify/functions/mb-client-analytics.js';
 
 const test = async () => {
   const status = getMindbodyEnvStatus({
@@ -79,6 +79,19 @@ const test = async () => {
   assert.equal(noShows.length, 1);
   assert.equal(noShows[0].noShowCount, 1);
   assert.equal(noShows[0].sessions[0].className, 'Pilates');
+
+  const suspensions = buildSuspensionsList({
+    clientMap: {
+      21: { Id: 21, FirstName: 'Frank', LastName: 'Foster', Active: true, Status: 'Active', HomeLocation: 'Home Studio', SuspensionInfo: { Reason: 'Member requested pause' } },
+      22: { Id: 22, FirstName: 'Gina', LastName: 'Green', Active: true, Status: 'Suspended', HomeLocation: 'Studio 2' },
+      23: { Id: 23, FirstName: 'Hank', LastName: 'Hale', Active: false, Status: 'Inactive', HomeLocation: 'Studio 4' },
+      24: { Id: 24, FirstName: 'Ivy', LastName: 'Irwin', Active: true, Status: 'Active', HomeLocation: 'Studio 1' },
+    },
+  });
+
+  assert.deepEqual(suspensions.map((client) => client.id), ['21', '22']);
+  assert.equal(suspensions.find((client) => client.id === '21').status, 'Active');
+  assert.equal(suspensions.find((client) => client.id === '22').status, 'Suspended');
 
   console.log('mb-test-status tests passed');
 };

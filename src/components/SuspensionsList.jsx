@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { PauseCircle, CheckCircle, Calendar } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { PauseCircle, CheckCircle, Calendar, ChevronDown } from 'lucide-react';
 
 function statusColor(status) {
   const s = (status || '').toLowerCase();
@@ -39,16 +39,27 @@ function startDateLabel(info) {
   return `From ${d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`;
 }
 
+const STUDIO_OPTIONS = ['All Studios', 'Carnegie', 'Ashburton', 'Surrey Hills', 'Hawthorn'];
+
 export default function SuspensionsList({ data, loading, error }) {
+  const [studioFilter, setStudioFilter] = useState('All Studios');
   const clients = data?.suspensions || [];
 
-  // DevTools diagnostic — helps identify what Mindbody actually returns
+  const visibleClients = useMemo(() => {
+    if (studioFilter === 'All Studios') return clients;
+    return clients.filter((client) => {
+      const location = String(client.mostVisitedLocation || client.homeLocation || '').trim();
+      return location.toLowerCase().includes(studioFilter.toLowerCase());
+    });
+  }, [clients, studioFilter]);
+
   useEffect(() => {
     if (clients.length > 0) {
       console.log('[SuspensionsList] sample:', {
         resumeDate:     clients[0]?.resumeDate,
         suspensionInfo: clients[0]?.suspensionInfo,
         status:         clients[0]?.status,
+        location:       clients[0]?.mostVisitedLocation || clients[0]?.homeLocation,
       });
     }
   }, [clients]);
@@ -62,11 +73,22 @@ export default function SuspensionsList({ data, loading, error }) {
           <h2 className="font-semibold text-gray-900">On Suspension</h2>
           {!loading && (
             <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-medium text-orange-400 border border-orange-500/20">
-              {clients.length}
+              {visibleClients.length}
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-600">Hold or non-active status</p>
+        <div className="relative">
+          <select
+            value={studioFilter}
+            onChange={(e) => setStudioFilter(e.target.value)}
+            className="appearance-none rounded-lg border border-gray-200 bg-white px-3 py-1.5 pr-8 text-xs text-gray-700 focus:border-orange-500 focus:outline-none"
+          >
+            {STUDIO_OPTIONS.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+        </div>
       </div>
 
       {/* Body */}
@@ -83,18 +105,19 @@ export default function SuspensionsList({ data, loading, error }) {
           <p className="p-5 text-sm text-red-400">Could not load: {error}</p>
         )}
 
-        {!loading && !error && clients.length === 0 && (
+        {!loading && !error && visibleClients.length === 0 && (
           <div className="py-10 text-center">
             <CheckCircle className="h-7 w-7 text-emerald-500/40 mx-auto mb-2" />
             <p className="text-sm text-gray-600">No suspended clients</p>
           </div>
         )}
 
-        {!loading && !error && clients.map((client) => {
-          const lbl      = resumeLabel(client.resumeDate);
+        {!loading && !error && visibleClients.map((client) => {
+          const lbl      = resumeLabel(client.resumeDate || client.endDate);
           const startLbl = startDateLabel(client.suspensionInfo);
           const reason   = client.suspensionInfo?.Reason || client.suspensionInfo?.reason ||
                            (client.suspensionInfo?.ReasonId ? `Reason #${client.suspensionInfo.ReasonId}` : null);
+          const studio   = client.mostVisitedLocation || client.homeLocation || 'Unassigned';
 
           return (
             <div
@@ -108,6 +131,14 @@ export default function SuspensionsList({ data, loading, error }) {
                     <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${statusColor(client.status)}`}>
                       {client.status || 'Suspended'}
                     </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-gray-500">
+                    <span>Studio</span>
+                    <span className="font-medium text-gray-700">{studio}</span>
+                  </div>
+                  <div className="mt-1 text-[10px] uppercase tracking-wide text-gray-400">
+                    Count source: signed-in attendance
                   </div>
 
                   <div className="mt-2 rounded-lg border border-orange-200 bg-orange-50/70 px-3 py-2">
