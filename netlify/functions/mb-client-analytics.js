@@ -7,8 +7,11 @@ import { getStaffToken, mbGet, ok, CORS, formatPhone, getSiteIdCandidates } from
 
 const MAX_RECENT_CLASSES = 50;
 const MAX_CLIENTS = 2000;
-const VISIT_BATCH_SIZE = 8;
+const VISIT_BATCH_SIZE = 20;
+const VISIT_HISTORY_DAYS = 365;
+const VISIT_PAGE_SIZE = 200;
 const STUDIO_LOCATIONS = ['Carnegie', 'Ashburton', 'Surrey Hills', 'Hawthorn'];
+const MAIN_STUDIO_MIN_VISITS = 4;
 
 function normalizeStatusText(value) {
   return String(value ?? '').trim().toLowerCase();
@@ -21,7 +24,9 @@ function isSuspendedStatusValue(value) {
 
 function isActiveStatusValue(value) {
   const status = normalizeStatusText(value);
-  return status === 'active' || status.includes('active');
+  // 'inactive' contains the substring 'active' — require a word match and
+  // explicitly reject 'inactive'.
+  return /\bactive\b/.test(status) && !/inactive/.test(status);
 }
 
 function collectStatusEntries(node, prefix = '') {
@@ -44,7 +49,9 @@ function collectStatusEntries(node, prefix = '') {
 
 function hasActiveMembershipStatus(client) {
   const status = normalizeStatusText(client.Status ?? client.status ?? '');
-  return status === 'active' || status.includes('active');
+  // Suspended members still hold a membership — they belong on the list.
+  if (/suspend|hold|paused/.test(status)) return true;
+  return isActiveStatusValue(status);
 }
 
 function hasSuspendedContractOrServiceStatus(client) {
@@ -71,7 +78,9 @@ function getStudioName(value) {
 
 function getMostVisitedLocation(clientId, locationCounts = new Map()) {
   const counts = locationCounts.get(String(clientId)) || new Map();
-  const entries = [...counts.entries()].filter(([location]) => STUDIO_LOCATIONS.includes(location));
+  const entries = [...counts.entries()].filter(
+    ([location, visits]) => STUDIO_LOCATIONS.includes(location) && visits >= MAIN_STUDIO_MIN_VISITS,
+  );
   if (!entries.length) return '';
   entries.sort((a, b) => b[1] - a[1]);
   return entries[0][0];
@@ -127,22 +136,47 @@ async function getClassVisits(token, classId) {
   }
 }
 
+// A "visit" only counts when the member actually attended. Cancelled,
+// missed, absent and no-show bookings must never update last-visit dates
+// or engagement — otherwise no-shows would be kept off Red's List.
+export function isRealAttendance(visit) {
+  if (visit.LateCancelled === true || visit.Cancelled === true || visit.Missed === true || visit.NoShow === true || visit.IsNoShow === true) return false;
+  const status = String(visit.Status || visit.BookingStatus || visit.AppointmentStatus || '').toLowerCase();
+  return !/cancel|noshow|no show|no-show|absent|missed/.test(status);
+}
+
 function getVisitDate(visit) {
   const candidates = [visit.VisitDate, visit.VisitDateTime, visit.StartDateTime, visit.Date, visit.timestamp, visit.Timestamp];
   for (const value of candidates) {
     if (!value) continue;
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'string' && value.trim()) {
+      const date = new Date(value.trim());
+      if (!Number.isNaN(date.getTime())) return date.toISOString();
+    }
     if (value instanceof Date) return value.toISOString();
   }
   return null;
 }
 
+// Mindbody defaults StartDate to *now* when omitted, returning only future
+// visits — so an explicit history window (StartDate/EndDate) is required,
+// exactly as in the API's GetClientVisits sample. We only need the most recent
+// visit, so we take the max date from a single page rather than paginating
+// (which would double the per-client HTTP calls and blow the dev timeout).
 async function getClientVisits(token, clientId) {
+  const now = new Date();
+  const params = {
+    ClientId: clientId,
+    StartDate: format(subDays(now, VISIT_HISTORY_DAYS), "yyyy-MM-dd'T'00:00:00"),
+    EndDate: format(now, "yyyy-MM-dd'T'23:59:59"),
+    Limit: VISIT_PAGE_SIZE,
+    Offset: 0,
+  };
   try {
-    // Fetch a page of visits and pick the most recent by date — the API's
-    // default sort order isn't guaranteed, so we don't rely on Visits[0].
-    const data = await mbGet('/client/clientvisits', token, { ClientId: clientId, Limit: 50 });
-    return data.Visits || [];
+    const first = await mbGet('/client/clientvisits', token, params);
+    const visits = first.Visits || [];
+    // Only real attendance counts as a "visit" — drop cancels and no-shows.
+    return visits.filter(isRealAttendance);
   } catch {
     return [];
   }
@@ -227,7 +261,7 @@ function hasActiveMemberStatus(client) {
   const status = String(client.Status || client.status || '').toLowerCase();
   const homeLocation = getHomeLocation(client);
   const isActiveFlag = client.Active !== false;
-  const isActiveStatus = status === 'active' || status.includes('active');
+  const isActiveStatus = isActiveStatusValue(status);
   const hasStudioHomeLocation = /home studio|studio/i.test(homeLocation);
   return isActiveFlag && (isActiveStatus || hasStudioHomeLocation);
 }
@@ -311,9 +345,9 @@ export function buildFringeSegments({ clientMap, attendanceCounts }) {
     const shape = mapClientToShape(client);
     shape.sessionsThisWeek = count;
 
-    if (count >= 1 && count <= 3) {
+    if (count >= 1 && count <= 2) {
       atRisk.push(shape);
-    } else if (count > 3) {
+    } else if (count >= 3) {
       engaged.push(shape);
     }
   }
@@ -406,10 +440,10 @@ export const handler = async (event) => {
               if (!clientId) continue;
 
               const status = String(visit.Status || visit.BookingStatus || '').toLowerCase();
-              const isCancelled = visit.LateCancelled === true || visit.Cancelled === true || /cancel/i.test(status);
               const signedIn = visit.SignedIn === true || /signed in/i.test(status);
+              const attended = isRealAttendance(visit);
 
-              if (!isCancelled) {
+              if (attended) {
                 engagedClientIds.add(String(clientId));
               }
 
@@ -422,11 +456,15 @@ export const handler = async (event) => {
                 }
               }
 
-              const visitDate = getVisitDate(visit);
-              if (visitDate) {
-                const existing = lastVisitDates.get(String(clientId));
-                if (!existing || visitDate > existing) {
-                  lastVisitDates.set(String(clientId), visitDate);
+              // Cancelled / no-show bookings are not visits — never let them
+              // refresh a member's last-visit date.
+              if (attended) {
+                const visitDate = getVisitDate(visit);
+                if (visitDate) {
+                  const existing = lastVisitDates.get(String(clientId));
+                  if (!existing || visitDate > existing) {
+                    lastVisitDates.set(String(clientId), visitDate);
+                  }
                 }
               }
             }
@@ -440,7 +478,7 @@ export const handler = async (event) => {
     // Only look up last-visit dates for clients who are active and didn't
     // attend a class this week — the pool that could end up on Red's List.
     const MAX_RED_CANDIDATES = 400;
-    const RED_LOOKUP_BATCH_SIZE = 25;
+    const RED_LOOKUP_BATCH_SIZE = 50;
     const redCandidateIds = clients
       .map((c) => String(c.Id || c.id))
       .filter((id) => id && !engagedClientIds.has(id) && isLikelyActiveClient(clientMap[id] || {}))
@@ -454,7 +492,8 @@ export const handler = async (event) => {
           const results = await Promise.allSettled(batch.map((clientId) => getClientVisits(token, clientId)));
           for (let i = 0; i < batch.length; i += 1) {
             if (results[i].status !== 'fulfilled') continue;
-            for (const visit of results[i].value) {
+            const visits = results[i].value;
+            for (const visit of visits) {
               const visitDate = getVisitDate(visit);
               if (!visitDate) continue;
               const clientId = String(batch[i]);

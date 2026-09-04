@@ -15,10 +15,53 @@ const CACHED_ENDPOINTS = {
   revenue:         '/api/mb-revenue',
 };
 
-async function safeFetch(url, options) {
+async function fetchOnce(url, options) {
   const res = await fetch(url, options);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    // Surface the server's error body (e.g. a timeout) instead of a bare
+    // "HTTP 500" so panels explain what actually failed.
+    let detail = '';
+    try {
+      const json = await res.json();
+      detail = json?.error || json?.message || '';
+    } catch { /* non-JSON body */ }
+    const err = new Error(`HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
+}
+
+// Deduplicate concurrent calls to the same endpoint. On load, the snapshot
+// and several panels can all request the heavy analytics function at once;
+// each duplicate multiplies the work inside the 30s dev limit and causes
+// timeouts. Sharing one in-flight promise per URL prevents the stampede.
+const inFlight = new Map();
+
+async function coordinatedFetch(url, options) {
+  const key = `${options?.method || 'GET'}:${url}`;
+  if (inFlight.has(key)) return inFlight.get(key);
+  const promise = fetchOnce(url, options).finally(() => inFlight.delete(key));
+  inFlight.set(key, promise);
+  return promise;
+}
+
+// Retry transient server errors (500/502/503) — the heavy analytics function
+// can exceed the dev-server's 30s limit under load, and a retry once the
+// burst has passed almost always succeeds.
+async function safeFetch(url, options, retries = 2) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await coordinatedFetch(url, options);
+    } catch (e) {
+      lastErr = e;
+      const retryable = e.status >= 500 || e.name === 'TypeError';
+      if (!retryable || attempt === retries) throw e;
+      await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 export default function App() {
@@ -26,6 +69,7 @@ export default function App() {
   const [loading, setLoading]         = useState(LOADING_ALL);
   const [errors, setErrors]           = useState({});
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [snapshotError, setSnapshotError] = useState(null);
 
   const refresh = useCallback((forceRefresh = false) => {
     setLoading(LOADING_ALL);
@@ -43,6 +87,7 @@ export default function App() {
     const cachedLoad = safeFetch('/api/mb-snapshot', { method: forceRefresh ? 'POST' : 'GET' })
       .then(snap => {
         if (snap.error) throw new Error(snap.error);
+        setSnapshotError(null);
         const update  = {};
         const missing = [];
         for (const [key, url] of Object.entries(CACHED_ENDPOINTS)) {
@@ -52,9 +97,11 @@ export default function App() {
         if (Object.keys(update).length) setData(prev => ({ ...prev, ...update }));
         return Promise.all(missing.map(([k, url]) => liveFetch(k, url)));
       })
-      .catch(() =>
-        Promise.all(Object.entries(CACHED_ENDPOINTS).map(([k, url]) => liveFetch(k, url)))
-      )
+      .catch((e) => {
+        // Cache layer down — data still loads live, just slower. Say so.
+        setSnapshotError(e.message);
+        return Promise.all(Object.entries(CACHED_ENDPOINTS).map(([k, url]) => liveFetch(k, url)));
+      })
       .finally(() =>
         setLoading(prev => ({ ...prev, attendance: false, clientAnalytics: false, payments: false, revenue: false }))
       );
@@ -76,6 +123,8 @@ export default function App() {
       errors={errors}
       lastRefresh={lastRefresh}
       onRefresh={() => refresh(true)}
+      snapshotError={snapshotError}
+      onDismissSnapshotError={() => setSnapshotError(null)}
       contactLog={{ contacted: {}, isContacted: () => false, logContact: async () => ({ logged: false }), getClientLogs: async () => [], loadingLog: false }}
     />
   );

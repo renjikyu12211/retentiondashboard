@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { format, isToday } from 'date-fns';
-import { RefreshCw, Activity, DollarSign } from 'lucide-react';
+import { RefreshCw, Activity, DollarSign, AlertTriangle, X } from 'lucide-react';
 import StatsGrid          from './StatsGrid.jsx';
 import AttendanceChart    from './AttendanceChart.jsx';
 import SuspensionsList    from './SuspensionsList.jsx';
@@ -19,7 +19,7 @@ const TABS = [
 
 const SHORT_PRODUCTS = new Set(['3-Session', '14-Day']);
 
-export default function Dashboard({ data, loading, errors, lastRefresh, onRefresh, contactLog }) {
+export default function Dashboard({ data, loading, errors, lastRefresh, onRefresh, contactLog, snapshotError, onDismissSnapshotError }) {
   const [tab, setTab] = useState('operations');
   const anyLoading    = Object.values(loading).some(Boolean);
 
@@ -97,6 +97,20 @@ export default function Dashboard({ data, loading, errors, lastRefresh, onRefres
 
       {/* ── Tab content ── */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-8 space-y-8">
+        {snapshotError && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium">Cache unavailable — showing live data (slower).</p>
+              <p className="text-xs text-amber-800 mt-0.5">{snapshotError}</p>
+            </div>
+            {onDismissSnapshotError && (
+              <button onClick={onDismissSnapshotError} className="text-amber-700 hover:text-amber-900" aria-label="Dismiss">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ─ Operations ─ */}
         {tab === 'operations' && (
